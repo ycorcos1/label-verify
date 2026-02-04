@@ -4,6 +4,17 @@
  * Helper utilities for common operations throughout the application.
  */
 
+// Re-export image resize utilities
+export {
+  resizeImage,
+  resizeImageIfNeeded,
+  fileToDataUrl,
+  createThumbnail,
+  resizeImages,
+  type ImageResizeOptions,
+  type ResizeResult,
+} from './imageResize';
+
 // ============================================================================
 // UUID Generation
 // ============================================================================
