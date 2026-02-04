@@ -10,7 +10,7 @@
  * - Track source image index for each chosen field
  */
 
-import { ExtractionResponse, ExtractedValues, FieldStatus } from '@/lib/types';
+import { ExtractionResponse, ExtractedValues, FieldStatus, GovernmentWarningFontSize, GovernmentWarningVisibility } from '@/lib/types';
 import { normalizeForComparison } from './index';
 
 // ============================================================================
@@ -52,6 +52,20 @@ export interface FieldProvenance {
 }
 
 /**
+ * Aggregated formatting observations for government warning
+ */
+export interface FormattingObservationsResult {
+  /** Whether the warning prefix appears bold (true if any image observed bold) */
+  isBold?: boolean | null;
+  /** Most conservative font size observation (smallest = worst case) */
+  fontSize?: GovernmentWarningFontSize | null;
+  /** Most conservative visibility observation (least visible = worst case) */
+  visibility?: GovernmentWarningVisibility | null;
+  /** Source image indices that provided formatting observations */
+  sourceImageIndices: number[];
+}
+
+/**
  * Complete result of merging extractions from multiple images
  */
 export interface MergedExtractionResult {
@@ -65,6 +79,8 @@ export interface MergedExtractionResult {
   conflictCount: number;
   /** All images contributed to the extraction */
   contributingImageIndices: number[];
+  /** Aggregated formatting observations for government warning */
+  formattingObservations?: FormattingObservationsResult;
 }
 
 /**
@@ -266,6 +282,106 @@ function mergeField(
 }
 
 // ============================================================================
+// Formatting Observations Aggregation
+// ============================================================================
+
+/**
+ * Font size severity ranking (lower = worse)
+ */
+const FONT_SIZE_SEVERITY: Record<GovernmentWarningFontSize, number> = {
+  'very_small': 1,
+  'small': 2,
+  'normal': 3,
+};
+
+/**
+ * Visibility severity ranking (lower = worse)
+ */
+const VISIBILITY_SEVERITY: Record<GovernmentWarningVisibility, number> = {
+  'subtle': 1,
+  'moderate': 2,
+  'prominent': 3,
+};
+
+/**
+ * Aggregates formatting observations from multiple extractions.
+ * Uses conservative aggregation:
+ * - isBold: true if ANY image shows bold (benefit of the doubt)
+ * - fontSize: smallest/worst size observed (conservative)
+ * - visibility: least visible observed (conservative)
+ */
+function aggregateFormattingObservations(
+  extractions: IndexedExtraction[]
+): FormattingObservationsResult | undefined {
+  const sourceImageIndices: number[] = [];
+  let aggregatedIsBold: boolean | null = null;
+  let aggregatedFontSize: GovernmentWarningFontSize | null = null;
+  let aggregatedVisibility: GovernmentWarningVisibility | null = null;
+  
+  let hasAnyObservation = false;
+  
+  for (const { extraction, imageIndex } of extractions) {
+    const { governmentWarningIsBold, governmentWarningFontSize, governmentWarningVisibility } = extraction;
+    
+    // Track if this image contributed any observation
+    const hasObservation = 
+      governmentWarningIsBold !== undefined && governmentWarningIsBold !== null ||
+      governmentWarningFontSize !== undefined && governmentWarningFontSize !== null ||
+      governmentWarningVisibility !== undefined && governmentWarningVisibility !== null;
+    
+    if (hasObservation) {
+      sourceImageIndices.push(imageIndex);
+      hasAnyObservation = true;
+    }
+    
+    // Aggregate bold: true if ANY image shows bold
+    if (governmentWarningIsBold === true) {
+      aggregatedIsBold = true;
+    } else if (governmentWarningIsBold === false && aggregatedIsBold !== true) {
+      aggregatedIsBold = false;
+    }
+    
+    // Aggregate font size: keep the smallest (worst case)
+    if (governmentWarningFontSize !== undefined && governmentWarningFontSize !== null) {
+      if (aggregatedFontSize === null) {
+        aggregatedFontSize = governmentWarningFontSize;
+      } else {
+        const currentSeverity = FONT_SIZE_SEVERITY[aggregatedFontSize];
+        const newSeverity = FONT_SIZE_SEVERITY[governmentWarningFontSize];
+        if (newSeverity < currentSeverity) {
+          aggregatedFontSize = governmentWarningFontSize;
+        }
+      }
+    }
+    
+    // Aggregate visibility: keep the least visible (worst case)
+    if (governmentWarningVisibility !== undefined && governmentWarningVisibility !== null) {
+      if (aggregatedVisibility === null) {
+        aggregatedVisibility = governmentWarningVisibility;
+      } else {
+        const currentSeverity = VISIBILITY_SEVERITY[aggregatedVisibility];
+        const newSeverity = VISIBILITY_SEVERITY[governmentWarningVisibility];
+        if (newSeverity < currentSeverity) {
+          aggregatedVisibility = governmentWarningVisibility;
+        }
+      }
+    }
+  }
+  
+  // Only return if there's at least one observation
+  if (!hasAnyObservation) {
+    return undefined;
+  }
+  
+  return {
+    isBold: aggregatedIsBold,
+    fontSize: aggregatedFontSize,
+    visibility: aggregatedVisibility,
+    sourceImageIndices,
+  };
+}
+
+// ============================================================================
 // Main Merge Function
 // ============================================================================
 
@@ -331,12 +447,16 @@ export function mergeExtractions(
       }
     }
     
+    // Extract formatting observations from single image
+    const formattingObservations = aggregateFormattingObservations(extractions);
+    
     return {
       extractedValues,
       provenance,
       hasConflicts: false,
       conflictCount: 0,
       contributingImageIndices: [imageIndex],
+      formattingObservations,
     };
   }
   
@@ -373,12 +493,16 @@ export function mergeExtractions(
     contributingIndices.add(imageIndex);
   }
   
+  // Aggregate formatting observations from all images
+  const formattingObservations = aggregateFormattingObservations(extractions);
+  
   return {
     extractedValues,
     provenance,
     hasConflicts: conflictCount > 0,
     conflictCount,
     contributingImageIndices: Array.from(contributingIndices).sort((a, b) => a - b),
+    formattingObservations,
   };
 }
 

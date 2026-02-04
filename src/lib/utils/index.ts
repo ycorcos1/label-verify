@@ -24,6 +24,7 @@ export {
   type FieldProvenance,
   type MergedExtractionResult,
   type IndexedExtraction,
+  type FormattingObservationsResult,
 } from './mergeExtractions';
 
 // Re-export report store utilities

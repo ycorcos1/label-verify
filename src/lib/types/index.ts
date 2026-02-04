@@ -135,6 +135,11 @@ export interface FieldResult {
 /**
  * Result of validating the government warning specifically
  */
+/**
+ * Bold status for government warning - can be detected, failed, or needs manual confirmation
+ */
+export type BoldStatus = 'detected' | 'not_detected' | 'manual_confirm';
+
 export interface WarningResult {
   /** The extracted warning text */
   extractedWarning?: string;
@@ -142,12 +147,22 @@ export interface WarningResult {
   wordingStatus: FieldStatus;
   /** Whether "GOVERNMENT WARNING:" is uppercase */
   uppercaseStatus: FieldStatus;
-  /** Bold formatting cannot be verified via OCR - always needs manual confirm */
-  boldStatus: 'manual_confirm';
+  /** Bold formatting status - may be detected via GPT-4 Vision or require manual confirmation */
+  boldStatus: BoldStatus;
   /** Overall warning validation status */
   overallStatus: FieldStatus;
   /** Short reason/explanation */
   reason?: string;
+  
+  // Formatting observations from GPT-4 Vision (v2)
+  /** Whether the warning prefix appears bold (from visual observation) */
+  observedIsBold?: boolean | null;
+  /** Observed font size relative to other label text */
+  observedFontSize?: GovernmentWarningFontSize | null;
+  /** Observed overall visibility/prominence of the warning */
+  observedVisibility?: GovernmentWarningVisibility | null;
+  /** Reason for formatting-related status changes */
+  formattingReason?: string;
 }
 
 // ============================================================================

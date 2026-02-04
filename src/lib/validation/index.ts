@@ -13,13 +13,14 @@
 
 import { z } from 'zod';
 
-// Re-export validation engine functions
+// Re-export validation engine functions and types
 export {
   validateGovernmentWarning,
   compareTextField,
   compareNumericField,
   computeApplicationResult,
   computeErrorResult,
+  type FormattingObservations,
 } from './validators';
 
 // ============================================================================
@@ -88,13 +89,20 @@ export const FieldResultSchema = z.object({
 // Warning Result Schema
 // ============================================================================
 
+export const BoldStatusSchema = z.enum(['detected', 'not_detected', 'manual_confirm']);
+
 export const WarningResultSchema = z.object({
   extractedWarning: z.string().optional(),
   wordingStatus: FieldStatusSchema,
   uppercaseStatus: FieldStatusSchema,
-  boldStatus: z.literal('manual_confirm'),
+  boldStatus: BoldStatusSchema,
   overallStatus: FieldStatusSchema,
   reason: z.string().optional(),
+  // Formatting observations from GPT-4 Vision (v2)
+  observedIsBold: z.boolean().nullable().optional(),
+  observedFontSize: GovernmentWarningFontSizeSchema.nullable().optional(),
+  observedVisibility: GovernmentWarningVisibilitySchema.nullable().optional(),
+  formattingReason: z.string().optional(),
 });
 
 // ============================================================================

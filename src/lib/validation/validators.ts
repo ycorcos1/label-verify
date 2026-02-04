@@ -16,6 +16,9 @@ import {
   ExtractedValues,
   ApplicationValues,
   OverallStatus,
+  BoldStatus,
+  GovernmentWarningFontSize,
+  GovernmentWarningVisibility,
 } from '@/lib/types';
 import { generateUUID, normalizeWhitespace, normalizeForComparison, removePunctuation, removeAccents } from '@/lib/utils';
 import { FieldProvenance, MergedExtractionResult } from '@/lib/utils/mergeExtractions';
@@ -42,15 +45,32 @@ const NORMALIZED_CANONICAL_WARNING = normalizeWhitespace(CANONICAL_WARNING_TEXT)
 const WARNING_PREFIX = "GOVERNMENT WARNING:";
 
 /**
+ * Options for formatting observations from GPT-4 Vision
+ */
+export interface FormattingObservations {
+  /** Whether the warning prefix appears bold */
+  isBold?: boolean | null;
+  /** Observed font size relative to other label text */
+  fontSize?: GovernmentWarningFontSize | null;
+  /** Observed overall visibility/prominence */
+  visibility?: GovernmentWarningVisibility | null;
+}
+
+/**
  * Validates the government warning statement against strict requirements:
  * - Word-for-word match with canonical wording (whitespace normalized)
  * - "GOVERNMENT WARNING:" prefix must be uppercase
- * - Bold formatting requires manual confirmation
+ * - Bold formatting - can now be detected via GPT-4 Vision observations
+ * - Font size and visibility observations for enhanced compliance checking
  *
  * @param extractedWarning - The warning text extracted from the label
+ * @param formattingObservations - Optional formatting observations from GPT-4 Vision
  * @returns WarningResult with detailed validation status
  */
-export function validateGovernmentWarning(extractedWarning: string | undefined): WarningResult {
+export function validateGovernmentWarning(
+  extractedWarning: string | undefined,
+  formattingObservations?: FormattingObservations
+): WarningResult {
   // Handle missing warning
   if (!extractedWarning || extractedWarning.trim().length === 0) {
     return {
@@ -116,32 +136,95 @@ export function validateGovernmentWarning(extractedWarning: string | undefined):
     }
   }
 
+  // Determine bold status based on formatting observations
+  let boldStatus: BoldStatus = 'manual_confirm';
+  let formattingReason: string | undefined;
+  const formattingIssues: string[] = [];
+
+  if (formattingObservations) {
+    // Bold detection
+    if (formattingObservations.isBold === true) {
+      boldStatus = 'detected';
+    } else if (formattingObservations.isBold === false) {
+      boldStatus = 'not_detected';
+      formattingIssues.push('"GOVERNMENT WARNING:" does not appear to be bold');
+    }
+    // If null, keep as 'manual_confirm'
+
+    // Font size check
+    if (formattingObservations.fontSize === 'very_small') {
+      formattingIssues.push('Warning text appears very small');
+    } else if (formattingObservations.fontSize === 'small') {
+      formattingIssues.push('Warning text appears smaller than recommended');
+    }
+
+    // Visibility check
+    if (formattingObservations.visibility === 'subtle') {
+      formattingIssues.push('Warning has low visibility/prominence');
+    }
+
+    if (formattingIssues.length > 0) {
+      formattingReason = formattingIssues.join('; ');
+    }
+  }
+
   // Compute overall status
   let overallStatus: FieldStatus;
   let overallReason: string;
 
+  // Determine if there are formatting concerns that should affect status
+  const hasFormattingFailure = boldStatus === 'not_detected';
+  const hasFormattingConcerns = formattingObservations && (
+    formattingObservations.fontSize === 'very_small' ||
+    formattingObservations.visibility === 'subtle'
+  );
+
   if (wordingStatus === FieldStatus.Pass && uppercaseStatus === FieldStatus.Pass) {
-    overallStatus = FieldStatus.Pass;
-    overallReason = 'Government warning matches required text (bold requires manual confirmation)';
+    if (hasFormattingFailure) {
+      // Wording and uppercase pass, but bold is not detected
+      overallStatus = FieldStatus.NeedsReview;
+      overallReason = 'Warning text correct but "GOVERNMENT WARNING:" may not be bold';
+    } else if (hasFormattingConcerns) {
+      // Wording and uppercase pass, but there are visibility concerns
+      overallStatus = FieldStatus.NeedsReview;
+      overallReason = formattingReason || 'Warning has formatting concerns';
+    } else if (boldStatus === 'detected') {
+      // Everything passes including bold detection
+      overallStatus = FieldStatus.Pass;
+      overallReason = 'Government warning matches all requirements';
+    } else {
+      // Wording and uppercase pass, bold needs manual confirmation
+      overallStatus = FieldStatus.Pass;
+      overallReason = 'Government warning matches required text (bold requires manual confirmation)';
+    }
   } else if (wordingStatus === FieldStatus.Fail || uppercaseStatus === FieldStatus.Fail) {
     overallStatus = FieldStatus.Fail;
     // Combine reasons
     const reasons: string[] = [];
     if (wordingReason) reasons.push(wordingReason);
     if (uppercaseReason) reasons.push(uppercaseReason);
+    if (formattingReason) reasons.push(formattingReason);
     overallReason = reasons.join('; ') || 'Government warning validation failed';
   } else {
     overallStatus = FieldStatus.NeedsReview;
-    overallReason = wordingReason || 'Government warning requires manual review';
+    const reasons: string[] = [];
+    if (wordingReason) reasons.push(wordingReason);
+    if (formattingReason) reasons.push(formattingReason);
+    overallReason = reasons.join('; ') || 'Government warning requires manual review';
   }
 
   return {
     extractedWarning: trimmedWarning,
     wordingStatus,
     uppercaseStatus,
-    boldStatus: 'manual_confirm',
+    boldStatus,
     overallStatus,
     reason: overallReason,
+    // Include formatting observations in the result
+    observedIsBold: formattingObservations?.isBold,
+    observedFontSize: formattingObservations?.fontSize,
+    observedVisibility: formattingObservations?.visibility,
+    formattingReason,
   };
 }
 
@@ -626,7 +709,16 @@ export function computeApplicationResult(
   }
 
   // Validate government warning (special handling)
-  const warningResult = validateGovernmentWarning(extracted.governmentWarning);
+  // Pass formatting observations if available from merged extraction result
+  const formattingObs = mergeResult?.formattingObservations;
+  const warningResult = validateGovernmentWarning(
+    extracted.governmentWarning,
+    formattingObs ? {
+      isBold: formattingObs.isBold,
+      fontSize: formattingObs.fontSize,
+      visibility: formattingObs.visibility,
+    } : undefined
+  );
 
   // Add warning to fail/review reasons
   if (warningResult.overallStatus === FieldStatus.Fail && warningResult.reason) {
