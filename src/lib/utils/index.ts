@@ -15,6 +15,17 @@ export {
   type ResizeResult,
 } from './imageResize';
 
+// Re-export merge extraction utilities
+export {
+  mergeExtractions,
+  mergeRawExtractions,
+  provenanceToFieldStatus,
+  type MergedFieldResult,
+  type FieldProvenance,
+  type MergedExtractionResult,
+  type IndexedExtraction,
+} from './mergeExtractions';
+
 // ============================================================================
 // UUID Generation
 // ============================================================================
