@@ -26,6 +26,8 @@ import {
 } from '@/lib/utils';
 import type { Report, ReportApplication } from '@/lib/types';
 import { useRouter } from 'next/navigation';
+import { pdf } from '@react-pdf/renderer';
+import { ReportPDF } from '@/components/pdf';
 
 // ============================================================================
 // Types
@@ -212,6 +214,7 @@ export default function ReportDetailPage({ params }: ReportDetailPageProps) {
   const [selectedAppId, setSelectedAppId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [generatingPdf, setGeneratingPdf] = useState(false);
 
   /**
    * Load the report from IndexedDB
@@ -240,9 +243,45 @@ export default function ReportDetailPage({ params }: ReportDetailPageProps) {
   /**
    * Handle downloading the report as JSON
    */
-  const handleDownload = useCallback(() => {
+  const handleDownloadJson = useCallback(() => {
     if (report) {
       downloadReportJson(report);
+    }
+  }, [report]);
+
+  /**
+   * Handle downloading the report as PDF
+   */
+  const handleDownloadPdf = useCallback(async () => {
+    if (!report) return;
+    
+    setGeneratingPdf(true);
+    setError(null);
+    
+    try {
+      // Generate PDF blob from the ReportPDF component
+      const blob = await pdf(<ReportPDF report={report} />).toBlob();
+      
+      // Create download link
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      
+      // Generate filename with brand name and date
+      const brandName = getBrandName(report).replace(/[^a-zA-Z0-9]/g, '-').toLowerCase();
+      const dateStr = new Date(report.createdAt).toISOString().split('T')[0];
+      a.download = `${brandName}-verification-report-${dateStr}.pdf`;
+      
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('PDF generation failed:', err);
+      setError('Failed to generate PDF. Please try again.');
+    } finally {
+      setGeneratingPdf(false);
     }
   }, [report]);
 
@@ -353,9 +392,27 @@ export default function ReportDetailPage({ params }: ReportDetailPageProps) {
         </div>
 
         <div className="flex items-center gap-2">
-          <Button variant="secondary" size="sm" onClick={handleDownload}>
+          <Button 
+            variant="primary" 
+            size="sm" 
+            onClick={handleDownloadPdf}
+            disabled={generatingPdf}
+          >
+            {generatingPdf ? (
+              <>
+                <Loader className="h-4 w-4 animate-spin" aria-hidden="true" />
+                Generating...
+              </>
+            ) : (
+              <>
+                <Download className="h-4 w-4" aria-hidden="true" />
+                Download PDF
+              </>
+            )}
+          </Button>
+          <Button variant="secondary" size="sm" onClick={handleDownloadJson}>
             <Download className="h-4 w-4" aria-hidden="true" />
-            Download JSON
+            JSON
           </Button>
           <Button
             variant="danger"
