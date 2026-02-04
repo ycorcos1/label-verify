@@ -35,6 +35,15 @@ export interface CreateReportParams {
   totalDurationMs: number;
 }
 
+/**
+ * Parameters for saving a single-application report (v2 format)
+ * In v2, each application is saved as its own individual report
+ */
+export interface CreateSingleAppReportParams {
+  application: ReportApplication;
+  processingTimeMs: number;
+}
+
 export interface ReportStoreError {
   code: 'DB_ERROR' | 'NOT_FOUND' | 'QUOTA_EXCEEDED' | 'UNKNOWN';
   message: string;
@@ -116,6 +125,7 @@ function mapError(error: unknown): ReportStoreError {
  * Saves a new report to IndexedDB
  * @param params - The report parameters
  * @returns The saved report or an error
+ * @deprecated Use saveSingleAppReport for v2 (one report per application)
  */
 export async function saveReport(params: CreateReportParams): Promise<ReportStoreResult<Report>> {
   try {
@@ -163,6 +173,99 @@ export async function saveReport(params: CreateReportParams): Promise<ReportStor
     db.close();
 
     return { success: true, data: report };
+  } catch (error) {
+    return { success: false, error: mapError(error) };
+  }
+}
+
+/**
+ * Saves a single application as its own report (v2 format)
+ * Each application becomes its own standalone report with a single-item summary
+ * 
+ * @param params - The single application report parameters
+ * @returns The saved report or an error
+ */
+export async function saveSingleAppReport(params: CreateSingleAppReportParams): Promise<ReportStoreResult<Report>> {
+  try {
+    const db = await openDatabase();
+
+    const { application, processingTimeMs } = params;
+
+    // Compute summary for this single application
+    const summary: ReportSummary = {
+      total: 1,
+      pass: application.result.overallStatus === 'pass' ? 1 : 0,
+      fail: application.result.overallStatus === 'fail' ? 1 : 0,
+      needsReview: application.result.overallStatus === 'needs_review' ? 1 : 0,
+      error: application.result.overallStatus === 'error' ? 1 : 0,
+    };
+
+    const report: Report = {
+      id: generateUUID(),
+      createdAt: new Date().toISOString(),
+      mode: 'single', // Always 'single' for per-application reports
+      applications: [application],
+      summary,
+      totalDurationMs: processingTimeMs,
+    };
+
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const store = tx.objectStore(STORE_NAME);
+    
+    await promisifyRequest(store.add(report));
+    db.close();
+
+    return { success: true, data: report };
+  } catch (error) {
+    return { success: false, error: mapError(error) };
+  }
+}
+
+/**
+ * Saves multiple applications as separate individual reports (v2 batch save)
+ * Each application in the array becomes its own standalone report
+ * 
+ * @param applications - Array of applications to save as individual reports
+ * @param processingTimeMs - Optional processing time per application (defaults to 0)
+ * @returns Array of saved reports or errors for each application
+ */
+export async function saveApplicationsAsReports(
+  applications: ReportApplication[],
+  processingTimeMs: number = 0
+): Promise<ReportStoreResult<Report[]>> {
+  try {
+    const db = await openDatabase();
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const store = tx.objectStore(STORE_NAME);
+    
+    const savedReports: Report[] = [];
+    const createdAt = new Date().toISOString();
+
+    for (const application of applications) {
+      // Compute summary for this single application
+      const summary: ReportSummary = {
+        total: 1,
+        pass: application.result.overallStatus === 'pass' ? 1 : 0,
+        fail: application.result.overallStatus === 'fail' ? 1 : 0,
+        needsReview: application.result.overallStatus === 'needs_review' ? 1 : 0,
+        error: application.result.overallStatus === 'error' ? 1 : 0,
+      };
+
+      const report: Report = {
+        id: generateUUID(),
+        createdAt,
+        mode: 'single', // Each application is its own single-application report
+        applications: [application],
+        summary,
+        totalDurationMs: application.result.processingTimeMs || processingTimeMs,
+      };
+
+      await promisifyRequest(store.add(report));
+      savedReports.push(report);
+    }
+
+    db.close();
+    return { success: true, data: savedReports };
   } catch (error) {
     return { success: false, error: mapError(error) };
   }

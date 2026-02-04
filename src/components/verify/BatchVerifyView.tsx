@@ -16,7 +16,7 @@ import { useImageGrouping } from './useImageGrouping';
 import { useApplicationValues } from './useApplicationValues';
 import { useBatchVerification, type BatchApplicationResult } from './useBatchVerification';
 import type { ApplicationValues } from '@/lib/types';
-import { formatDuration, saveReport, downloadReportJson, generateUUID, createThumbnail, type CreateReportParams } from '@/lib/utils';
+import { formatDuration, saveApplicationsAsReports, downloadReportJson, generateUUID, createThumbnail } from '@/lib/utils';
 import type { ReportApplication, Report } from '@/lib/types';
 
 /**
@@ -72,8 +72,8 @@ export function BatchVerifyView() {
   // Selected application for details panel
   const [selectedApplicationId, setSelectedApplicationId] = useState<string | null>(null);
 
-  // Saved report state
-  const [savedReport, setSavedReport] = useState<Report | null>(null);
+  // Saved reports state (v2: one report per application)
+  const [savedReports, setSavedReports] = useState<Report[]>([]);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [isQuotaError, setIsQuotaError] = useState(false);
   const [pendingReportData, setPendingReportData] = useState<Report | null>(null);
@@ -142,7 +142,7 @@ export function BatchVerifyView() {
     resetBatch();
     setSelectedApplicationId(null);
     setActiveFilter('all');
-    setSavedReport(null);
+    setSavedReports([]);
     setSaveError(null);
 
     await runBatchVerification(
@@ -156,10 +156,10 @@ export function BatchVerifyView() {
   }, [groups, ungroupedImages, applicationValuesMap, runBatchVerification, resetBatch, updateImageStatus]);
 
   /**
-   * Auto-save report when batch verification completes
+   * Auto-save reports when batch verification completes (v2: one report per application)
    */
   useEffect(() => {
-    const saveReportAfterCompletion = async () => {
+    const saveReportsAfterCompletion = async () => {
       if (batchState === 'completed' || batchState === 'partial_error') {
         // Build report applications from results with thumbnails
         const reportApps: ReportApplication[] = [];
@@ -205,16 +205,11 @@ export function BatchVerifyView() {
           }
         }
 
-        if (reportApps.length > 0 && !savedReport) {
-          const params: CreateReportParams = {
-            mode: 'batch',
-            applications: reportApps,
-            totalDurationMs: batchSummary.totalProcessingTimeMs,
-          };
-
-          const result = await saveReport(params);
+        // Save each application as its own report (v2 format)
+        if (reportApps.length > 0 && savedReports.length === 0) {
+          const result = await saveApplicationsAsReports(reportApps);
           if (result.success) {
-            setSavedReport(result.data);
+            setSavedReports(result.data);
           } else {
             // Check if it's a quota exceeded error
             const isQuota = result.error.code === 'QUOTA_EXCEEDED';
@@ -227,7 +222,7 @@ export function BatchVerifyView() {
                 ...app,
                 imageThumbnails: undefined,
               }));
-              // Create a temporary report structure for download
+              // Create a temporary combined report structure for download
               const tempReport: Report = {
                 id: generateUUID(),
                 createdAt: new Date().toISOString(),
@@ -249,19 +244,23 @@ export function BatchVerifyView() {
       }
     };
 
-    saveReportAfterCompletion();
-  }, [batchState, applicationResults, applicationValuesMap, batchSummary.totalProcessingTimeMs, savedReport]);
+    saveReportsAfterCompletion();
+  }, [batchState, applicationResults, applicationValuesMap, batchSummary.totalProcessingTimeMs, savedReports.length]);
 
   /**
-   * Handle downloading the saved report as JSON
+   * Handle downloading saved reports as JSON
+   * In v2, downloads all saved reports (one per application)
    */
   const handleDownloadReportJson = useCallback(() => {
-    if (savedReport) {
-      downloadReportJson(savedReport);
+    if (savedReports.length > 0) {
+      // Download each saved report
+      for (const report of savedReports) {
+        downloadReportJson(report);
+      }
     } else if (pendingReportData) {
       downloadReportJson(pendingReportData);
     }
-  }, [savedReport, pendingReportData]);
+  }, [savedReports, pendingReportData]);
 
   /**
    * Handle dismissing the save error
@@ -586,14 +585,16 @@ export function BatchVerifyView() {
           </div>
         </CardHeader>
         <CardContent>
-          {/* Report saved notification */}
-          {savedReport && (
+          {/* Reports saved notification (v2: one report per application) */}
+          {savedReports.length > 0 && (
             <div className="mb-4 flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700 dark:border-green-800 dark:bg-green-950/30 dark:text-green-300">
               <ClipboardList className="h-4 w-4 flex-shrink-0" aria-hidden="true" />
-              <span>Report saved automatically.</span>
+              <span>
+                {savedReports.length} report{savedReports.length !== 1 ? 's' : ''} saved automatically.
+              </span>
               <div className="ml-auto flex items-center gap-3">
                 <a
-                  href={`/reports/${savedReport.id}`}
+                  href="/reports"
                   className="font-medium underline hover:no-underline"
                 >
                   View in Reports
@@ -602,7 +603,7 @@ export function BatchVerifyView() {
                   onClick={handleDownloadReportJson}
                   className="font-medium underline hover:no-underline"
                 >
-                  Download JSON
+                  Download JSON{savedReports.length > 1 ? 's' : ''}
                 </button>
               </div>
             </div>

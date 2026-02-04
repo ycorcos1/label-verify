@@ -29,6 +29,8 @@ export {
 // Re-export report store utilities
 export {
   saveReport,
+  saveSingleAppReport,
+  saveApplicationsAsReports,
   listReports,
   getReport,
   deleteReport,
@@ -38,6 +40,7 @@ export {
   isIndexedDBAvailable,
   type ReportListItem,
   type CreateReportParams,
+  type CreateSingleAppReportParams,
   type ReportStoreError,
   type ReportStoreResult,
 } from './reportStore';
