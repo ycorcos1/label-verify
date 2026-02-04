@@ -549,18 +549,18 @@ export function BatchVerifyView() {
             </>
           )}
         </Button>
-        <Button
-          variant="secondary"
-          size="md"
-          onClick={handleRetryFailed}
-          disabled={!hasFailedApplications || isProcessing}
-        >
-          <RefreshCw className="h-4 w-4" aria-hidden="true" />
-          Retry Failed
-          {hasFailedApplications && (
+        {hasFailedApplications && (
+          <Button
+            variant="secondary"
+            size="md"
+            onClick={handleRetryFailed}
+            disabled={isProcessing}
+          >
+            <RefreshCw className="h-4 w-4" aria-hidden="true" />
+            Retry Failed
             <span className="ml-1 text-xs">({batchSummary.error})</span>
-          )}
-        </Button>
+          </Button>
+        )}
       </div>
 
       {/* Results section with two-pane layout */}
