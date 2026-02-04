@@ -1,6 +1,5 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
 import { StatusBadge, Button } from '@/components/ui';
 import type { ImageItemWithStatus } from '@/lib/types';
@@ -75,18 +74,8 @@ function ThumbnailItem({
   isSelected: boolean;
   onSelectionChange?: (imageId: string, selected: boolean) => void;
 }) {
-  const previewUrlRef = useRef<string | null>(null);
-
-  // Track the preview URL for cleanup
-  useEffect(() => {
-    previewUrlRef.current = image.previewUrl;
-    return () => {
-      // Revoke the object URL on unmount to prevent memory leaks
-      if (previewUrlRef.current) {
-        URL.revokeObjectURL(previewUrlRef.current);
-      }
-    };
-  }, [image.previewUrl]);
+  // Note: Preview URL cleanup is handled by useImageUpload hook
+  // Do not revoke URLs here as it causes race conditions
 
   const handleImageClick = () => {
     if (onImageClick) {

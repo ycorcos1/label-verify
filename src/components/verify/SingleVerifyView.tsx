@@ -4,7 +4,9 @@ import { Upload, FileText, Play, ClipboardList } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, Button } from '@/components/ui';
 import { UploadDropzone } from './UploadDropzone';
 import { ThumbnailList } from './ThumbnailList';
+import { ApplicationValuesForm } from './ApplicationValuesForm';
 import { useImageUpload } from './useImageUpload';
+import { useApplicationValues } from './useApplicationValues';
 
 /**
  * SingleVerifyView component for verifying a single application
@@ -18,6 +20,11 @@ export function SingleVerifyView() {
     hasImages,
     isProcessing,
   } = useImageUpload();
+
+  const {
+    values: applicationValues,
+    setValues: setApplicationValues,
+  } = useApplicationValues();
 
   // Determine if verification can be run
   const canRunVerification = hasImages && !isProcessing;
@@ -58,15 +65,12 @@ export function SingleVerifyView() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-col items-center justify-center py-8">
-            <FileText className="h-8 w-8 text-zinc-400" aria-hidden="true" />
-            <p className="mt-3 text-sm text-zinc-600 dark:text-zinc-400">
-              Enter values from the application to compare against the label.
-            </p>
-            <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-500">
-              Leave blank to run label-only validation.
-            </p>
-          </div>
+          <ApplicationValuesForm
+            values={applicationValues}
+            onChange={setApplicationValues}
+            suggestions={undefined}
+            disabled={isProcessing}
+          />
         </CardContent>
       </Card>
 

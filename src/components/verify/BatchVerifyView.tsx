@@ -1,14 +1,16 @@
 'use client';
 
 import { useState, useCallback, useEffect } from 'react';
-import { Upload, Layers, Play, ClipboardList, Users, File, Info } from 'lucide-react';
+import { Upload, Layers, Play, ClipboardList, Users, File, Info, FileText } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, Button } from '@/components/ui';
 import { UploadDropzone } from './UploadDropzone';
 import { ThumbnailList } from './ThumbnailList';
 import { ApplicationGroupCard } from './ApplicationGroupCard';
 import { UngroupedImageCard } from './UngroupedImageCard';
+import { ApplicationValuesForm } from './ApplicationValuesForm';
 import { useImageUpload } from './useImageUpload';
 import { useImageGrouping } from './useImageGrouping';
+import { useApplicationValues } from './useApplicationValues';
 
 /**
  * BatchVerifyView component for verifying multiple applications
@@ -32,6 +34,12 @@ export function BatchVerifyView() {
     splitGroup,
     renameGroup,
   } = useImageGrouping({ autoGroup: true });
+
+  // Application values for the selected application in details panel
+  const {
+    values: selectedAppValues,
+    setValues: setSelectedAppValues,
+  } = useApplicationValues();
 
   // Track selected image IDs for manual grouping
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -271,6 +279,25 @@ export function BatchVerifyView() {
                 <p className="text-sm text-zinc-500 dark:text-zinc-400">
                   Select an application to view details.
                 </p>
+              </div>
+              
+              {/* Application Values form for selected application (shown when an app is selected) */}
+              {/* For now, show as collapsed section; will be connected when selection is implemented */}
+              <div className="mt-4 border-t border-zinc-200 pt-4 dark:border-zinc-700">
+                <h5 className="mb-3 flex items-center gap-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                  <FileText className="h-4 w-4" aria-hidden="true" />
+                  Application Values
+                  <span className="text-xs font-normal text-zinc-500 dark:text-zinc-400">
+                    (Optional)
+                  </span>
+                </h5>
+                <ApplicationValuesForm
+                  values={selectedAppValues}
+                  onChange={setSelectedAppValues}
+                  suggestions={undefined}
+                  disabled={isProcessing}
+                  compact
+                />
               </div>
             </div>
           </div>
