@@ -1,5 +1,21 @@
 'use client';
 
+/**
+ * @deprecated This component is deprecated as of v2.
+ * 
+ * The unified verification flow now uses BatchVerifyView for all scenarios,
+ * including single-application verification. BatchVerifyView supports:
+ * - Single-image applications (no grouping required)
+ * - Multi-image applications (auto-grouped by filename)
+ * - Manual grouping via selection
+ * 
+ * This file is kept for reference but is no longer exported or used.
+ * See: docs/prd_v2_improvements.md - Item 5 (Unified Verify Page)
+ * 
+ * To remove this file entirely, delete:
+ * - src/components/verify/SingleVerifyView.tsx
+ */
+
 import { useState, useCallback } from 'react';
 import { Upload, FileText, Play, ClipboardList, RefreshCw, Download, HardDrive } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, Button, ErrorBanner, LoadingState } from '@/components/ui';
@@ -15,6 +31,8 @@ import { generateUUID, safeJsonStringifyPretty, saveReport, downloadReportJson, 
 import type { ReportApplication, Report } from '@/lib/types';
 
 /**
+ * @deprecated SingleVerifyView - Use BatchVerifyView instead.
+ * 
  * SingleVerifyView component for verifying a single application
  * comprised of one or more label images.
  * 

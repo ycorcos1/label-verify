@@ -2,7 +2,10 @@
  * Verify page components
  */
 
-export { SingleVerifyView } from './SingleVerifyView';
+// Note: SingleVerifyView is deprecated and no longer exported.
+// The unified flow uses BatchVerifyView for all verification scenarios.
+// See: docs/prd_v2_improvements.md - Item 5 (Unified Verify Page)
+
 export { BatchVerifyView } from './BatchVerifyView';
 export { UploadDropzone } from './UploadDropzone';
 export type { UploadDropzoneProps } from './UploadDropzone';
