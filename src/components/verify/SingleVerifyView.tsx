@@ -1,24 +1,39 @@
 'use client';
 
-import { Upload, FileText, Play, ClipboardList } from 'lucide-react';
+import { useState, useCallback } from 'react';
+import { Upload, FileText, Play, ClipboardList, RefreshCw } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, Button } from '@/components/ui';
 import { UploadDropzone } from './UploadDropzone';
 import { ThumbnailList } from './ThumbnailList';
 import { ApplicationValuesForm } from './ApplicationValuesForm';
+import { ResultsSummary } from './ResultsSummary';
+import { ResultsDetails } from './ResultsDetails';
 import { useImageUpload } from './useImageUpload';
 import { useApplicationValues } from './useApplicationValues';
+import { useVerification, type VerificationResult } from './useVerification';
+import { generateUUID, safeJsonStringifyPretty } from '@/lib/utils';
 
 /**
  * SingleVerifyView component for verifying a single application
  * comprised of one or more label images.
+ * 
+ * Pipeline:
+ * 1. Upload images → display thumbnails with status
+ * 2. Optionally fill in application values
+ * 3. Run Verification → extract data from each image
+ * 4. Merge extractions → validate → render results
  */
 export function SingleVerifyView() {
+  // Generate a stable application ID for this session
+  const [applicationId] = useState(() => generateUUID());
+  
   const {
     images,
     addFiles,
     removeImage,
+    updateImageStatus,
     hasImages,
-    isProcessing,
+    isProcessing: isUploading,
   } = useImageUpload();
 
   const {
@@ -26,8 +41,100 @@ export function SingleVerifyView() {
     setValues: setApplicationValues,
   } = useApplicationValues();
 
+  const {
+    state: verificationState,
+    result: verificationResult,
+    errorMessage,
+    runVerification,
+    retry,
+  } = useVerification({
+    applicationId,
+    applicationName: 'Label Application',
+  });
+
+  // UI state
+  const [showDetails, setShowDetails] = useState(false);
+  const [isRetrying, setIsRetrying] = useState(false);
+
   // Determine if verification can be run
-  const canRunVerification = hasImages && !isProcessing;
+  const isProcessing = verificationState === 'processing';
+  const canRunVerification = hasImages && !isProcessing && !isUploading;
+  const hasResults = verificationResult !== null;
+
+  /**
+   * Handle running verification
+   */
+  const handleRunVerification = useCallback(async () => {
+    // Reset all image statuses to queued
+    images.forEach((img) => {
+      updateImageStatus(img.id, 'queued');
+    });
+
+    await runVerification(
+      images,
+      applicationValues,
+      (imageId, status, error) => {
+        updateImageStatus(imageId, status, error);
+      }
+    );
+  }, [images, applicationValues, runVerification, updateImageStatus]);
+
+  /**
+   * Handle retry after error
+   */
+  const handleRetry = useCallback(async () => {
+    setIsRetrying(true);
+    
+    // Reset all image statuses to queued
+    images.forEach((img) => {
+      updateImageStatus(img.id, 'queued');
+    });
+
+    await retry(
+      images,
+      applicationValues,
+      (imageId, status, error) => {
+        updateImageStatus(imageId, status, error);
+      }
+    );
+    
+    setIsRetrying(false);
+  }, [images, applicationValues, retry, updateImageStatus]);
+
+  /**
+   * Handle downloading results as JSON
+   */
+  const handleDownloadJson = useCallback(() => {
+    if (!verificationResult) return;
+
+    const reportData = {
+      id: applicationId,
+      createdAt: new Date().toISOString(),
+      mode: 'single',
+      applicationResult: verificationResult.applicationResult,
+      extractedValues: verificationResult.extractedValues,
+      applicationValues,
+      processingTimeMs: verificationResult.processingTimeMs,
+    };
+
+    const json = safeJsonStringifyPretty(reportData);
+    if (!json) return;
+
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `label-verify-${applicationId.slice(0, 8)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, [verificationResult, applicationId, applicationValues]);
+
+  /**
+   * Get suggestions from extracted values
+   */
+  const suggestions = verificationResult?.extractedValues;
 
   return (
     <div className="space-y-6">
@@ -68,7 +175,7 @@ export function SingleVerifyView() {
           <ApplicationValuesForm
             values={applicationValues}
             onChange={setApplicationValues}
-            suggestions={undefined}
+            suggestions={suggestions}
             disabled={isProcessing}
           />
         </CardContent>
@@ -76,9 +183,22 @@ export function SingleVerifyView() {
 
       {/* Run Verification CTA */}
       <div className="flex justify-center">
-        <Button size="lg" disabled={!canRunVerification}>
-          <Play className="h-4 w-4" aria-hidden="true" />
-          Run Verification
+        <Button
+          size="lg"
+          onClick={handleRunVerification}
+          disabled={!canRunVerification}
+        >
+          {isProcessing ? (
+            <>
+              <RefreshCw className="h-4 w-4 animate-spin" aria-hidden="true" />
+              Processing...
+            </>
+          ) : (
+            <>
+              <Play className="h-4 w-4" aria-hidden="true" />
+              Run Verification
+            </>
+          )}
         </Button>
       </div>
 
@@ -91,15 +211,74 @@ export function SingleVerifyView() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-col items-center justify-center py-8">
-            <ClipboardList className="h-8 w-8 text-zinc-400" aria-hidden="true" />
-            <p className="mt-3 text-sm text-zinc-600 dark:text-zinc-400">
-              No results yet.
-            </p>
-            <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-500">
-              Upload label images and run verification to see results.
-            </p>
-          </div>
+          {!hasResults && !isProcessing && (
+            <div className="flex flex-col items-center justify-center py-8">
+              <ClipboardList className="h-8 w-8 text-zinc-400" aria-hidden="true" />
+              <p className="mt-3 text-sm text-zinc-600 dark:text-zinc-400">
+                No results yet.
+              </p>
+              <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-500">
+                Upload label images and run verification to see results.
+              </p>
+            </div>
+          )}
+
+          {isProcessing && (
+            <div className="flex flex-col items-center justify-center py-8">
+              <RefreshCw className="h-8 w-8 text-blue-500 animate-spin" aria-hidden="true" />
+              <p className="mt-3 text-sm text-zinc-600 dark:text-zinc-400">
+                Processing images...
+              </p>
+              <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-500">
+                Extracting data and validating labels.
+              </p>
+            </div>
+          )}
+
+          {hasResults && !isProcessing && (
+            <div className="space-y-4">
+              <ResultsSummary
+                result={verificationResult.applicationResult}
+                onViewDetails={() => setShowDetails(!showDetails)}
+                onDownloadJson={handleDownloadJson}
+                onRetry={verificationResult.applicationResult.overallStatus === 'error' ? handleRetry : undefined}
+                isRetrying={isRetrying}
+                detailsExpanded={showDetails}
+              />
+
+              {showDetails && (
+                <ResultsDetails
+                  result={verificationResult.applicationResult}
+                  extractedValues={verificationResult.extractedValues}
+                  imagePreviewUrls={images.map((img) => img.previewUrl)}
+                />
+              )}
+            </div>
+          )}
+
+          {/* Error message display */}
+          {errorMessage && verificationState === 'error' && !hasResults && (
+            <div className="flex flex-col items-center justify-center py-8">
+              <div className="rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/30 p-4 text-center">
+                <p className="text-sm text-red-700 dark:text-red-300">
+                  {errorMessage}
+                </p>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="mt-3"
+                  onClick={handleRetry}
+                  disabled={isRetrying}
+                >
+                  <RefreshCw
+                    className={`h-4 w-4 ${isRetrying ? 'animate-spin' : ''}`}
+                    aria-hidden="true"
+                  />
+                  {isRetrying ? 'Retrying...' : 'Retry'}
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
