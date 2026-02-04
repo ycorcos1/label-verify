@@ -1,5 +1,34 @@
-import { FileText, AlertTriangle } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui';
+'use client';
+
+import { useState, useEffect, useCallback, useMemo, use } from 'react';
+import Link from 'next/link';
+import {
+  FileText,
+  AlertTriangle,
+  Download,
+  ChevronLeft,
+  RefreshCw,
+  Loader,
+  CheckCircle2,
+  XCircle,
+  Clock,
+  Info,
+} from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle, Button, StatusBadge } from '@/components/ui';
+import { ResultsDetails } from '@/components/verify/ResultsDetails';
+import {
+  getReport,
+  deleteReport,
+  downloadReportJson,
+  formatDate,
+  formatDuration,
+} from '@/lib/utils';
+import type { Report, ReportApplication } from '@/lib/types';
+import { useRouter } from 'next/navigation';
+
+// ============================================================================
+// Types
+// ============================================================================
 
 interface ReportDetailPageProps {
   params: Promise<{
@@ -7,45 +36,443 @@ interface ReportDetailPageProps {
   }>;
 }
 
-export default async function ReportDetailPage({ params }: ReportDetailPageProps) {
-  const { reportId } = await params;
-  
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+/**
+ * Maps overall status to StatusBadge status type
+ */
+function mapOverallStatusToStatusType(
+  status: string
+): 'pass' | 'fail' | 'needs_review' | 'error' {
+  if (status === 'pass') return 'pass';
+  if (status === 'fail') return 'fail';
+  if (status === 'needs_review') return 'needs_review';
+  if (status === 'error') return 'error';
+  return 'needs_review';
+}
+
+/**
+ * Gets a border accent color based on status
+ */
+function getStatusBorderClass(status: string): string {
+  if (status === 'pass') {
+    return 'border-l-emerald-400 dark:border-l-emerald-500';
+  }
+  if (status === 'fail') {
+    return 'border-l-red-400 dark:border-l-red-500';
+  }
+  if (status === 'needs_review') {
+    return 'border-l-amber-400 dark:border-l-amber-500';
+  }
+  if (status === 'error') {
+    return 'border-l-red-400 dark:border-l-red-500';
+  }
+  return 'border-l-zinc-300 dark:border-l-zinc-600';
+}
+
+// ============================================================================
+// Sub-Components
+// ============================================================================
+
+interface ReportApplicationRowProps {
+  application: ReportApplication;
+  isSelected?: boolean;
+  onClick?: () => void;
+}
+
+/**
+ * A single application row in the report list
+ */
+function ReportApplicationRow({
+  application,
+  isSelected = false,
+  onClick,
+}: ReportApplicationRowProps) {
+  const statusType = mapOverallStatusToStatusType(application.result.overallStatus);
+  const borderClass = getStatusBorderClass(application.result.overallStatus);
+  const topReason = application.result.topReasons?.[0];
+
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">
-          Report Details
-        </h1>
-        <p className="mt-1 font-mono text-sm text-zinc-500 dark:text-zinc-400">
-          {reportId}
-        </p>
+    <Card
+      className={`
+        border-l-4 ${borderClass}
+        cursor-pointer transition-all
+        hover:shadow-md hover:border-zinc-300 dark:hover:border-zinc-600
+        ${isSelected ? 'ring-2 ring-blue-500 dark:ring-blue-400' : ''}
+      `}
+      onClick={onClick}
+    >
+      <CardContent className="py-3 px-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1 min-w-0 space-y-1">
+            <div className="flex items-center gap-2">
+              <h4 className="font-medium text-zinc-900 dark:text-zinc-100 truncate">
+                {application.name}
+              </h4>
+              <StatusBadge status={statusType} size="sm" />
+            </div>
+
+            <div className="flex items-center gap-3 text-xs text-zinc-500 dark:text-zinc-400">
+              <span>
+                {application.imageCount} image{application.imageCount !== 1 ? 's' : ''}
+              </span>
+              <span>{formatDuration(application.result.processingTimeMs)}</span>
+            </div>
+
+            {topReason && (
+              <p className="text-sm text-zinc-600 dark:text-zinc-400 truncate">
+                {topReason}
+              </p>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+interface SummaryStatsProps {
+  report: Report;
+}
+
+/**
+ * Summary statistics bar for the report
+ */
+function SummaryStats({ report }: SummaryStatsProps) {
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+      <div className="flex items-center gap-2 rounded-lg bg-zinc-100 dark:bg-zinc-800 px-3 py-2">
+        <FileText className="h-4 w-4 text-zinc-500 dark:text-zinc-400" aria-hidden="true" />
+        <div>
+          <p className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
+            {report.summary.total}
+          </p>
+          <p className="text-xs text-zinc-500 dark:text-zinc-400">Total</p>
+        </div>
       </div>
 
+      <div className="flex items-center gap-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 px-3 py-2">
+        <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+        <div>
+          <p className="text-lg font-semibold text-emerald-700 dark:text-emerald-300">
+            {report.summary.pass}
+          </p>
+          <p className="text-xs text-emerald-600 dark:text-emerald-400">Pass</p>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2 rounded-lg bg-red-50 dark:bg-red-950/30 px-3 py-2">
+        <XCircle className="h-4 w-4 text-red-600 dark:text-red-400" aria-hidden="true" />
+        <div>
+          <p className="text-lg font-semibold text-red-700 dark:text-red-300">
+            {report.summary.fail}
+          </p>
+          <p className="text-xs text-red-600 dark:text-red-400">Fail</p>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2 rounded-lg bg-amber-50 dark:bg-amber-950/30 px-3 py-2">
+        <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" aria-hidden="true" />
+        <div>
+          <p className="text-lg font-semibold text-amber-700 dark:text-amber-300">
+            {report.summary.needsReview}
+          </p>
+          <p className="text-xs text-amber-600 dark:text-amber-400">Review</p>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2 rounded-lg bg-zinc-100 dark:bg-zinc-800 px-3 py-2">
+        <Clock className="h-4 w-4 text-zinc-500 dark:text-zinc-400" aria-hidden="true" />
+        <div>
+          <p className="text-lg font-semibold text-zinc-900 dark:text-zinc-100">
+            {formatDuration(report.totalDurationMs)}
+          </p>
+          <p className="text-xs text-zinc-500 dark:text-zinc-400">Duration</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// Main Component
+// ============================================================================
+
+export default function ReportDetailPage({ params }: ReportDetailPageProps) {
+  const resolvedParams = use(params);
+  const reportId = resolvedParams.reportId;
+  const router = useRouter();
+
+  const [report, setReport] = useState<Report | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedAppId, setSelectedAppId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  /**
+   * Load the report from IndexedDB
+   */
+  const loadReport = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    const result = await getReport(reportId);
+    if (result.success) {
+      setReport(result.data);
+      // Auto-select first application if available
+      if (result.data.applications.length > 0 && !selectedAppId) {
+        setSelectedAppId(result.data.applications[0].id);
+      }
+    } else {
+      setError(result.error.message);
+    }
+    setLoading(false);
+  }, [reportId, selectedAppId]);
+
+  // Load report on mount
+  useEffect(() => {
+    loadReport();
+  }, [loadReport]);
+
+  /**
+   * Handle downloading the report as JSON
+   */
+  const handleDownload = useCallback(() => {
+    if (report) {
+      downloadReportJson(report);
+    }
+  }, [report]);
+
+  /**
+   * Handle deleting the report
+   */
+  const handleDelete = useCallback(async () => {
+    if (!report) return;
+    setDeleting(true);
+    const result = await deleteReport(report.id);
+    if (result.success) {
+      router.push('/reports');
+    } else {
+      setError(`Failed to delete report: ${result.error.message}`);
+      setDeleting(false);
+      setShowDeleteConfirm(false);
+    }
+  }, [report, router]);
+
+  /**
+   * Get the selected application
+   */
+  const selectedApp = useMemo(() => {
+    if (!report || !selectedAppId) return null;
+    return report.applications.find((app) => app.id === selectedAppId) || null;
+  }, [report, selectedAppId]);
+
+  // Loading state
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-2 text-zinc-500 dark:text-zinc-400">
+          <Link href="/reports" className="hover:text-zinc-900 dark:hover:text-zinc-100">
+            Reports
+          </Link>
+          <span>/</span>
+          <span>Loading...</span>
+        </div>
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <RefreshCw className="h-8 w-8 text-zinc-400 animate-spin" aria-hidden="true" />
+            <p className="mt-4 text-sm text-zinc-600 dark:text-zinc-400">
+              Loading report...
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error || !report) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-2 text-zinc-500 dark:text-zinc-400">
+          <Link href="/reports" className="hover:text-zinc-900 dark:hover:text-zinc-100">
+            Reports
+          </Link>
+          <span>/</span>
+          <span>Error</span>
+        </div>
+        <Card accentColor="red">
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <AlertTriangle className="h-8 w-8 text-red-500" aria-hidden="true" />
+            <p className="mt-4 text-sm text-red-700 dark:text-red-300">
+              {error || 'Report not found'}
+            </p>
+            <Link href="/reports">
+              <Button variant="primary" size="sm" className="mt-4">
+                <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+                Back to Reports
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Breadcrumb */}
+      <div className="flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400">
+        <Link href="/reports" className="hover:text-zinc-900 dark:hover:text-zinc-100 flex items-center gap-1">
+          <ChevronLeft className="h-4 w-4" />
+          Reports
+        </Link>
+        <span>/</span>
+        <span className="font-mono text-xs truncate max-w-[150px]">{report.id.slice(0, 8)}</span>
+      </div>
+
+      {/* Header */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50 capitalize">
+            {report.mode} Verification Report
+          </h1>
+          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+            {formatDate(report.createdAt)}
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Button variant="secondary" size="sm" onClick={handleDownload}>
+            <Download className="h-4 w-4" aria-hidden="true" />
+            Download JSON
+          </Button>
+          <Button
+            variant="danger"
+            size="sm"
+            onClick={() => setShowDeleteConfirm(true)}
+            disabled={deleting}
+          >
+            {deleting ? (
+              <Loader className="h-4 w-4 animate-spin" aria-hidden="true" />
+            ) : (
+              'Delete'
+            )}
+          </Button>
+        </div>
+      </div>
+
+      {/* Delete confirmation */}
+      {showDeleteConfirm && (
+        <Card accentColor="red">
+          <CardContent className="flex items-start gap-3 py-4">
+            <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-500" aria-hidden="true" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-zinc-900 dark:text-zinc-50">
+                Delete this report?
+              </p>
+              <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+                This action cannot be undone.
+              </p>
+              <div className="mt-3 flex gap-2">
+                <Button
+                  variant="danger"
+                  size="sm"
+                  onClick={handleDelete}
+                  disabled={deleting}
+                >
+                  {deleting ? 'Deleting...' : 'Delete'}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowDeleteConfirm(false)}
+                  disabled={deleting}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Images not stored banner */}
       <Card accentColor="yellow">
         <CardContent className="flex items-start gap-3 py-4">
-          <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-500" aria-hidden="true" />
+          <Info className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-500" aria-hidden="true" />
           <div>
             <p className="text-sm font-medium text-zinc-900 dark:text-zinc-50">
               Images not stored
             </p>
             <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-              Re-upload required to re-run verification.
+              Re-upload required to re-run verification. Only extracted data and validation results are saved.
             </p>
           </div>
         </CardContent>
       </Card>
 
+      {/* Summary Stats */}
+      <SummaryStats report={report} />
+
+      {/* Applications list and detail view */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <FileText className="h-5 w-5" aria-hidden="true" />
-            Report Summary
+            Applications ({report.applications.length})
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            Report detail view coming soon. This page will show the saved verification results.
-          </p>
+          {report.applications.length === 0 ? (
+            <p className="text-sm text-zinc-500 dark:text-zinc-400 py-4 text-center">
+              No applications in this report.
+            </p>
+          ) : (
+            <div className="grid gap-6 lg:grid-cols-2">
+              {/* Left pane: Application list */}
+              <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-700 dark:bg-zinc-800/50">
+                <h4 className="mb-3 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                  Select Application
+                </h4>
+                <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
+                  {report.applications.map((app) => (
+                    <ReportApplicationRow
+                      key={app.id}
+                      application={app}
+                      isSelected={selectedAppId === app.id}
+                      onClick={() => setSelectedAppId(app.id)}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              {/* Right pane: Details */}
+              <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-700 dark:bg-zinc-800/50">
+                <h4 className="mb-3 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                  Details
+                </h4>
+                
+                {!selectedApp ? (
+                  <div className="flex flex-col items-center justify-center py-6">
+                    <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                      Select an application to view details.
+                    </p>
+                  </div>
+                ) : (
+                  <ResultsDetails
+                    result={selectedApp.result}
+                    extractedValues={selectedApp.extractedValues}
+                    imagePreviewUrls={[]}
+                    imageAltTexts={[]}
+                    showImagePreviewModal={false}
+                  />
+                )}
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

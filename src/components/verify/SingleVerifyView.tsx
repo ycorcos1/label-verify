@@ -11,7 +11,8 @@ import { ResultsDetails } from './ResultsDetails';
 import { useImageUpload } from './useImageUpload';
 import { useApplicationValues } from './useApplicationValues';
 import { useVerification, type VerificationResult } from './useVerification';
-import { generateUUID, safeJsonStringifyPretty } from '@/lib/utils';
+import { generateUUID, safeJsonStringifyPretty, saveReport, downloadReportJson, type CreateReportParams } from '@/lib/utils';
+import type { ReportApplication, Report } from '@/lib/types';
 
 /**
  * SingleVerifyView component for verifying a single application
@@ -55,6 +56,8 @@ export function SingleVerifyView() {
   // UI state
   const [showDetails, setShowDetails] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
+  const [savedReport, setSavedReport] = useState<Report | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // Determine if verification can be run
   const isProcessing = verificationState === 'processing';
@@ -65,19 +68,48 @@ export function SingleVerifyView() {
    * Handle running verification
    */
   const handleRunVerification = useCallback(async () => {
+    // Reset states
+    setSavedReport(null);
+    setSaveError(null);
+
     // Reset all image statuses to queued
     images.forEach((img) => {
       updateImageStatus(img.id, 'queued');
     });
 
-    await runVerification(
+    const result = await runVerification(
       images,
       applicationValues,
       (imageId, status, error) => {
         updateImageStatus(imageId, status, error);
       }
     );
-  }, [images, applicationValues, runVerification, updateImageStatus]);
+
+    // Auto-save report after verification completes
+    if (result && result.applicationResult) {
+      const reportApp: ReportApplication = {
+        id: applicationId,
+        name: 'Label Application',
+        imageCount: images.length,
+        extractedValues: result.extractedValues,
+        applicationValues: applicationValues,
+        result: result.applicationResult,
+      };
+
+      const params: CreateReportParams = {
+        mode: 'single',
+        applications: [reportApp],
+        totalDurationMs: result.processingTimeMs,
+      };
+
+      const saveResult = await saveReport(params);
+      if (saveResult.success) {
+        setSavedReport(saveResult.data);
+      } else {
+        setSaveError(saveResult.error.message);
+      }
+    }
+  }, [images, applicationValues, runVerification, updateImageStatus, applicationId]);
 
   /**
    * Handle retry after error
@@ -105,31 +137,35 @@ export function SingleVerifyView() {
    * Handle downloading results as JSON
    */
   const handleDownloadJson = useCallback(() => {
-    if (!verificationResult) return;
+    if (savedReport) {
+      // Download the saved report
+      downloadReportJson(savedReport);
+    } else if (verificationResult) {
+      // Fallback: create a temporary report structure for download
+      const reportData = {
+        id: applicationId,
+        createdAt: new Date().toISOString(),
+        mode: 'single',
+        applicationResult: verificationResult.applicationResult,
+        extractedValues: verificationResult.extractedValues,
+        applicationValues,
+        processingTimeMs: verificationResult.processingTimeMs,
+      };
 
-    const reportData = {
-      id: applicationId,
-      createdAt: new Date().toISOString(),
-      mode: 'single',
-      applicationResult: verificationResult.applicationResult,
-      extractedValues: verificationResult.extractedValues,
-      applicationValues,
-      processingTimeMs: verificationResult.processingTimeMs,
-    };
+      const json = safeJsonStringifyPretty(reportData);
+      if (!json) return;
 
-    const json = safeJsonStringifyPretty(reportData);
-    if (!json) return;
-
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `label-verify-${applicationId.slice(0, 8)}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }, [verificationResult, applicationId, applicationValues]);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `label-verify-${applicationId.slice(0, 8)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+  }, [verificationResult, applicationId, applicationValues, savedReport]);
 
   /**
    * Get suggestions from extracted values
@@ -237,6 +273,34 @@ export function SingleVerifyView() {
 
           {hasResults && !isProcessing && (
             <div className="space-y-4">
+              {/* Report saved notification */}
+              {savedReport && (
+                <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700 dark:border-green-800 dark:bg-green-950/30 dark:text-green-300">
+                  <ClipboardList className="h-4 w-4 flex-shrink-0" aria-hidden="true" />
+                  <span>Report saved automatically.</span>
+                  <a
+                    href={`/reports/${savedReport.id}`}
+                    className="ml-auto font-medium underline hover:no-underline"
+                  >
+                    View in Reports
+                  </a>
+                </div>
+              )}
+
+              {/* Save error notification */}
+              {saveError && (
+                <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
+                  <ClipboardList className="h-4 w-4 flex-shrink-0" aria-hidden="true" />
+                  <span>Could not save report: {saveError}</span>
+                  <button
+                    onClick={handleDownloadJson}
+                    className="ml-auto font-medium underline hover:no-underline"
+                  >
+                    Download JSON instead
+                  </button>
+                </div>
+              )}
+
               <ResultsSummary
                 result={verificationResult.applicationResult}
                 onViewDetails={() => setShowDetails(!showDetails)}

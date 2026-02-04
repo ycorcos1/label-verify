@@ -26,6 +26,22 @@ export {
   type IndexedExtraction,
 } from './mergeExtractions';
 
+// Re-export report store utilities
+export {
+  saveReport,
+  listReports,
+  getReport,
+  deleteReport,
+  clearAllReports,
+  exportReportAsJson,
+  downloadReportJson,
+  isIndexedDBAvailable,
+  type ReportListItem,
+  type CreateReportParams,
+  type ReportStoreError,
+  type ReportStoreResult,
+} from './reportStore';
+
 // ============================================================================
 // UUID Generation
 // ============================================================================
