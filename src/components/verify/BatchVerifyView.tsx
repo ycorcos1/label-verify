@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useCallback, useEffect, useMemo } from 'react';
-import { Upload, Layers, Play, ClipboardList, Users, File, Info, FileText, RefreshCw } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle, Button } from '@/components/ui';
+import { Upload, Layers, Play, ClipboardList, Users, File, Info, FileText, RefreshCw, AlertTriangle } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle, Button, ErrorBanner, LoadingState, ProcessingProgress, ApplicationErrorCard, detectErrorType } from '@/components/ui';
 import { UploadDropzone } from './UploadDropzone';
 import { ThumbnailList } from './ThumbnailList';
 import { ApplicationGroupCard } from './ApplicationGroupCard';
@@ -16,7 +16,7 @@ import { useImageGrouping } from './useImageGrouping';
 import { useApplicationValues } from './useApplicationValues';
 import { useBatchVerification, type BatchApplicationResult } from './useBatchVerification';
 import type { ApplicationValues } from '@/lib/types';
-import { formatDuration, saveReport, downloadReportJson, type CreateReportParams } from '@/lib/utils';
+import { formatDuration, saveReport, downloadReportJson, generateUUID, type CreateReportParams } from '@/lib/utils';
 import type { ReportApplication, Report } from '@/lib/types';
 
 /**
@@ -75,6 +75,8 @@ export function BatchVerifyView() {
   // Saved report state
   const [savedReport, setSavedReport] = useState<Report | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [isQuotaError, setIsQuotaError] = useState(false);
+  const [pendingReportData, setPendingReportData] = useState<Report | null>(null);
 
   // Update grouping when images change
   useEffect(() => {
@@ -178,7 +180,30 @@ export function BatchVerifyView() {
           if (result.success) {
             setSavedReport(result.data);
           } else {
+            // Check if it's a quota exceeded error
+            const isQuota = result.error.code === 'QUOTA_EXCEEDED';
+            setIsQuotaError(isQuota);
             setSaveError(result.error.message);
+            
+            // Store pending report data for forced download
+            if (isQuota) {
+              // Create a temporary report structure for download
+              const tempReport: Report = {
+                id: generateUUID(),
+                createdAt: new Date().toISOString(),
+                mode: 'batch',
+                applications: reportApps,
+                summary: {
+                  total: reportApps.length,
+                  pass: reportApps.filter(a => a.result.overallStatus === 'pass').length,
+                  fail: reportApps.filter(a => a.result.overallStatus === 'fail').length,
+                  needsReview: reportApps.filter(a => a.result.overallStatus === 'needs_review').length,
+                  error: reportApps.filter(a => a.result.overallStatus === 'error').length,
+                },
+                totalDurationMs: batchSummary.totalProcessingTimeMs,
+              };
+              setPendingReportData(tempReport);
+            }
           }
         }
       }
@@ -193,8 +218,18 @@ export function BatchVerifyView() {
   const handleDownloadReportJson = useCallback(() => {
     if (savedReport) {
       downloadReportJson(savedReport);
+    } else if (pendingReportData) {
+      downloadReportJson(pendingReportData);
     }
-  }, [savedReport]);
+  }, [savedReport, pendingReportData]);
+
+  /**
+   * Handle dismissing the save error
+   */
+  const handleDismissSaveError = useCallback(() => {
+    setSaveError(null);
+    setIsQuotaError(false);
+  }, []);
 
   /**
    * Handle retrying failed applications
@@ -533,11 +568,32 @@ export function BatchVerifyView() {
             </div>
           )}
 
-          {/* Save error notification */}
-          {saveError && (
+          {/* Save error notification - special handling for quota exceeded */}
+          {saveError && isQuotaError && (
+            <div className="mb-4">
+              <ErrorBanner
+                message="Storage Quota Exceeded"
+                description={saveError}
+                severity="error"
+                isQuotaError={true}
+                onDismiss={handleDismissSaveError}
+                onDownload={handleDownloadReportJson}
+                downloadLabel="Download Report Now"
+              />
+            </div>
+          )}
+
+          {/* Regular save error notification */}
+          {saveError && !isQuotaError && (
             <div className="mb-4 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
               <ClipboardList className="h-4 w-4 flex-shrink-0" aria-hidden="true" />
               <span>Could not save report: {saveError}</span>
+              <button
+                onClick={handleDownloadReportJson}
+                className="ml-auto font-medium underline hover:no-underline"
+              >
+                Download JSON instead
+              </button>
             </div>
           )}
 
@@ -576,6 +632,17 @@ export function BatchVerifyView() {
                 </div>
               )}
 
+              {/* Processing progress indicator */}
+              {isProcessing && (
+                <div className="mb-4">
+                  <ProcessingProgress
+                    current={batchSummary.total - batchSummary.pending}
+                    total={batchSummary.total}
+                    label="Processing applications"
+                  />
+                </div>
+              )}
+
               {(hasResults || isProcessing) && (
                 <BatchApplicationList
                   results={filteredResults}
@@ -603,27 +670,64 @@ export function BatchVerifyView() {
                   </p>
                 </div>
               ) : selectedApplicationResult.status === 'queued' || selectedApplicationResult.status === 'processing' ? (
-                <div className="flex flex-col items-center justify-center py-6">
-                  <RefreshCw className="h-6 w-6 text-blue-500 animate-spin" aria-hidden="true" />
-                  <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
-                    {selectedApplicationResult.status === 'queued' ? 'Waiting in queue...' : 'Processing...'}
-                  </p>
-                </div>
-              ) : selectedApplicationResult.status === 'error' && !selectedApplicationResult.result ? (
-                <div className="flex flex-col items-center justify-center py-6">
-                  <div className="rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/30 p-4 text-center">
-                    <p className="text-sm text-red-700 dark:text-red-300">
-                      {selectedApplicationResult.errorMessage || 'An error occurred during processing.'}
-                    </p>
-                  </div>
-                </div>
-              ) : selectedApplicationResult.result ? (
-                <ResultsDetails
-                  result={selectedApplicationResult.result}
-                  extractedValues={selectedApplicationResult.extractedValues || undefined}
-                  imagePreviewUrls={selectedAppImageUrls}
-                  imageAltTexts={selectedAppImageNames}
+                <LoadingState
+                  type={selectedApplicationResult.status === 'queued' ? 'loading' : 'extracting'}
+                  message={selectedApplicationResult.status === 'queued' ? 'Waiting in queue...' : 'Processing...'}
+                  description={selectedApplicationResult.status === 'queued' 
+                    ? 'This application will be processed shortly.' 
+                    : 'Extracting data from label images.'}
+                  size="sm"
                 />
+              ) : selectedApplicationResult.status === 'error' && !selectedApplicationResult.result ? (
+                <ApplicationErrorCard
+                  errorType={detectErrorType(selectedApplicationResult.errorMessage || 'Processing error')}
+                  errorMessage={selectedApplicationResult.errorMessage}
+                  applicationName={selectedApplicationResult.applicationName}
+                  totalImageCount={selectedApplicationResult.imageCount}
+                  onRetry={handleRetryFailed}
+                />
+              ) : selectedApplicationResult.result ? (
+                <div className="space-y-3">
+                  {/* Mis-grouping warning */}
+                  {selectedApplicationResult.misgroupWarning && (
+                    <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/30">
+                      <AlertTriangle className="h-4 w-4 flex-shrink-0 text-amber-500 dark:text-amber-400 mt-0.5" aria-hidden="true" />
+                      <div>
+                        <p className="text-sm font-medium text-amber-700 dark:text-amber-300">
+                          Possible Mis-grouping Detected
+                        </p>
+                        <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
+                          {selectedApplicationResult.misgroupWarning}
+                        </p>
+                        <p className="text-xs text-amber-600/80 dark:text-amber-400/80 mt-1">
+                          Consider splitting this group if images belong to different products.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Missing warning hint */}
+                  {selectedApplicationResult.missingWarning && selectedApplicationResult.imageCount === 1 && (
+                    <div className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 p-3 dark:border-blue-800 dark:bg-blue-950/30">
+                      <Info className="h-4 w-4 flex-shrink-0 text-blue-500 dark:text-blue-400 mt-0.5" aria-hidden="true" />
+                      <div>
+                        <p className="text-sm font-medium text-blue-700 dark:text-blue-300">
+                          Government Warning Not Found
+                        </p>
+                        <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5">
+                          Try uploading the back label if you have not already.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  <ResultsDetails
+                    result={selectedApplicationResult.result}
+                    extractedValues={selectedApplicationResult.extractedValues || undefined}
+                    imagePreviewUrls={selectedAppImageUrls}
+                    imageAltTexts={selectedAppImageNames}
+                  />
+                </div>
               ) : null}
               
               {/* Application Values form for selected application */}

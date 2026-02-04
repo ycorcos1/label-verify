@@ -22,3 +22,13 @@ export type { StatusType, StatusBadgeProps } from './StatusBadge';
 // Modal components
 export { ImagePreviewModal } from './ImagePreviewModal';
 export type { ImagePreviewModalProps } from './ImagePreviewModal';
+
+// Error components
+export { ErrorBanner, ErrorBannerContainer, useGlobalErrors } from './ErrorBanner';
+export type { ErrorBannerProps, ErrorSeverity, GlobalError, ErrorBannerContainerProps } from './ErrorBanner';
+export { ApplicationErrorCard, InlineError, detectErrorType } from './ApplicationErrorCard';
+export type { ApplicationErrorCardProps, ApplicationErrorType, InlineErrorProps } from './ApplicationErrorCard';
+
+// Loading components
+export { LoadingState, InlineLoading, ProcessingProgress } from './LoadingState';
+export type { LoadingStateProps, InlineLoadingProps, ProcessingProgressProps, LoadingType } from './LoadingState';

@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { Upload, FileText, Play, ClipboardList, RefreshCw } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle, Button } from '@/components/ui';
+import { Upload, FileText, Play, ClipboardList, RefreshCw, Download, HardDrive } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle, Button, ErrorBanner, LoadingState } from '@/components/ui';
 import { UploadDropzone } from './UploadDropzone';
 import { ThumbnailList } from './ThumbnailList';
 import { ApplicationValuesForm } from './ApplicationValuesForm';
@@ -58,6 +58,8 @@ export function SingleVerifyView() {
   const [isRetrying, setIsRetrying] = useState(false);
   const [savedReport, setSavedReport] = useState<Report | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [isQuotaError, setIsQuotaError] = useState(false);
+  const [pendingReportData, setPendingReportData] = useState<Report | null>(null);
 
   // Determine if verification can be run
   const isProcessing = verificationState === 'processing';
@@ -71,6 +73,8 @@ export function SingleVerifyView() {
     // Reset states
     setSavedReport(null);
     setSaveError(null);
+    setIsQuotaError(false);
+    setPendingReportData(null);
 
     // Reset all image statuses to queued
     images.forEach((img) => {
@@ -106,7 +110,30 @@ export function SingleVerifyView() {
       if (saveResult.success) {
         setSavedReport(saveResult.data);
       } else {
+        // Check if it's a quota exceeded error
+        const isQuota = saveResult.error.code === 'QUOTA_EXCEEDED';
+        setIsQuotaError(isQuota);
         setSaveError(saveResult.error.message);
+        
+        // Store pending report data for forced download
+        if (isQuota) {
+          // Create a temporary report structure for download
+          const tempReport: Report = {
+            id: generateUUID(),
+            createdAt: new Date().toISOString(),
+            mode: 'single',
+            applications: [reportApp],
+            summary: {
+              total: 1,
+              pass: result.applicationResult.overallStatus === 'pass' ? 1 : 0,
+              fail: result.applicationResult.overallStatus === 'fail' ? 1 : 0,
+              needsReview: result.applicationResult.overallStatus === 'needs_review' ? 1 : 0,
+              error: result.applicationResult.overallStatus === 'error' ? 1 : 0,
+            },
+            totalDurationMs: result.processingTimeMs,
+          };
+          setPendingReportData(tempReport);
+        }
       }
     }
   }, [images, applicationValues, runVerification, updateImageStatus, applicationId]);
@@ -140,6 +167,9 @@ export function SingleVerifyView() {
     if (savedReport) {
       // Download the saved report
       downloadReportJson(savedReport);
+    } else if (pendingReportData) {
+      // Download the pending report (for quota exceeded scenarios)
+      downloadReportJson(pendingReportData);
     } else if (verificationResult) {
       // Fallback: create a temporary report structure for download
       const reportData = {
@@ -165,7 +195,15 @@ export function SingleVerifyView() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     }
-  }, [verificationResult, applicationId, applicationValues, savedReport]);
+  }, [verificationResult, applicationId, applicationValues, savedReport, pendingReportData]);
+
+  /**
+   * Handle dismissing the save error
+   */
+  const handleDismissSaveError = useCallback(() => {
+    setSaveError(null);
+    setIsQuotaError(false);
+  }, []);
 
   /**
    * Get suggestions from extracted values
@@ -260,15 +298,12 @@ export function SingleVerifyView() {
           )}
 
           {isProcessing && (
-            <div className="flex flex-col items-center justify-center py-8">
-              <RefreshCw className="h-8 w-8 text-blue-500 animate-spin" aria-hidden="true" />
-              <p className="mt-3 text-sm text-zinc-600 dark:text-zinc-400">
-                Processing images...
-              </p>
-              <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-500">
-                Extracting data and validating labels.
-              </p>
-            </div>
+            <LoadingState
+              type="processing"
+              message="Processing Images..."
+              description="Extracting data and validating labels. This may take a few seconds."
+              progress={`${images.filter(img => img.status === 'completed').length} of ${images.length} images processed`}
+            />
           )}
 
           {hasResults && !isProcessing && (
@@ -287,8 +322,21 @@ export function SingleVerifyView() {
                 </div>
               )}
 
-              {/* Save error notification */}
-              {saveError && (
+              {/* Save error notification - special handling for quota exceeded */}
+              {saveError && isQuotaError && (
+                <ErrorBanner
+                  message="Storage Quota Exceeded"
+                  description={saveError}
+                  severity="error"
+                  isQuotaError={true}
+                  onDismiss={handleDismissSaveError}
+                  onDownload={handleDownloadJson}
+                  downloadLabel="Download Report Now"
+                />
+              )}
+
+              {/* Regular save error notification */}
+              {saveError && !isQuotaError && (
                 <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
                   <ClipboardList className="h-4 w-4 flex-shrink-0" aria-hidden="true" />
                   <span>Could not save report: {saveError}</span>

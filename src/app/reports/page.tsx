@@ -10,7 +10,7 @@ import {
   RefreshCw,
   AlertTriangle,
 } from 'lucide-react';
-import { Card, CardContent, Button, StatusBadge } from '@/components/ui';
+import { Card, CardContent, Button, StatusBadge, LoadingState } from '@/components/ui';
 import {
   listReports,
   getReport,
@@ -212,11 +212,12 @@ export default function ReportsPage() {
       {/* Loading state */}
       {loading && reports.length === 0 && (
         <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <RefreshCw className="h-8 w-8 text-zinc-400 animate-spin" aria-hidden="true" />
-            <p className="mt-4 text-sm text-zinc-600 dark:text-zinc-400">
-              Loading reports...
-            </p>
+          <CardContent>
+            <LoadingState
+              type="loading"
+              message="Loading Reports..."
+              description="Retrieving your saved verification reports."
+            />
           </CardContent>
         </Card>
       )}

@@ -257,6 +257,26 @@ export function useVerification(
         applicationResult.topReasons.push('Some images failed to process');
       }
 
+      // Detect mis-grouping: check if brand names conflict across images
+      if (mergeResult.provenance.brand?.needsReview && mergeResult.provenance.brand.conflictingCandidates) {
+        const candidates = mergeResult.provenance.brand.conflictingCandidates;
+        if (candidates.length >= 2) {
+          const misgroupWarning = `Possible mis-grouping: found different brand names "${candidates[0]}" and "${candidates[1]}"`;
+          if (!applicationResult.topReasons.includes(misgroupWarning)) {
+            applicationResult.topReasons.unshift(misgroupWarning);
+          }
+        }
+      }
+
+      // Add missing warning hint if only one image was uploaded
+      const missingWarning = !mergeResult.extractedValues.governmentWarning;
+      if (missingWarning && images.length === 1) {
+        const missingHint = 'Government warning not found - try uploading the back label';
+        if (!applicationResult.topReasons.some(r => r.toLowerCase().includes('warning'))) {
+          applicationResult.topReasons.push(missingHint);
+        }
+      }
+
       const verificationResult: VerificationResult = {
         extractedValues: mergeResult.extractedValues,
         mergeResult,

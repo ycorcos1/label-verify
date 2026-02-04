@@ -48,6 +48,10 @@ export interface BatchApplicationResult {
   errorMessage?: string;
   /** Image count */
   imageCount: number;
+  /** Warning if possible mis-grouping detected (brands disagree) */
+  misgroupWarning?: string;
+  /** Whether the government warning was not found */
+  missingWarning?: boolean;
 }
 
 export interface BatchVerificationSummary {
@@ -335,6 +339,18 @@ export function useBatchVerification(
       // Merge extractions
       const mergeResult = mergeRawExtractions(extractions);
 
+      // Detect mis-grouping: check if brand names conflict across images
+      let misgroupWarning: string | undefined;
+      if (mergeResult.provenance.brand?.needsReview && mergeResult.provenance.brand.conflictingCandidates) {
+        const candidates = mergeResult.provenance.brand.conflictingCandidates;
+        if (candidates.length >= 2) {
+          misgroupWarning = `Possible mis-grouping detected: found different brand names "${candidates[0]}" and "${candidates[1]}"`;
+        }
+      }
+
+      // Detect missing government warning
+      const missingWarning = !mergeResult.extractedValues.governmentWarning;
+
       // Compute application result
       const appResult = computeApplicationResult(
         mergeResult.extractedValues,
@@ -351,6 +367,19 @@ export function useBatchVerification(
         appResult.topReasons.push('Some images failed to process');
       }
 
+      // Add mis-grouping warning to top reasons if detected
+      if (misgroupWarning && !appResult.topReasons.includes(misgroupWarning)) {
+        appResult.topReasons.unshift(misgroupWarning);
+      }
+
+      // Add missing warning hint if detected and only one image uploaded
+      if (missingWarning && images.length === 1) {
+        const missingHint = 'Government warning not found - try uploading the back label';
+        if (!appResult.topReasons.some(r => r.includes('warning'))) {
+          appResult.topReasons.push(missingHint);
+        }
+      }
+
       const batchResult: BatchApplicationResult = {
         applicationId,
         applicationName,
@@ -360,6 +389,8 @@ export function useBatchVerification(
         mergeResult,
         processingTimeMs,
         imageCount: images.length,
+        misgroupWarning,
+        missingWarning,
       };
 
       updateApplicationResult(applicationId, batchResult);

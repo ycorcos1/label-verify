@@ -14,7 +14,7 @@ import {
   Clock,
   Info,
 } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle, Button, StatusBadge } from '@/components/ui';
+import { Card, CardContent, CardHeader, CardTitle, Button, StatusBadge, LoadingState } from '@/components/ui';
 import { ResultsDetails } from '@/components/verify/ResultsDetails';
 import {
   getReport,
@@ -281,11 +281,12 @@ export default function ReportDetailPage({ params }: ReportDetailPageProps) {
           <span>Loading...</span>
         </div>
         <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <RefreshCw className="h-8 w-8 text-zinc-400 animate-spin" aria-hidden="true" />
-            <p className="mt-4 text-sm text-zinc-600 dark:text-zinc-400">
-              Loading report...
-            </p>
+          <CardContent>
+            <LoadingState
+              type="loading"
+              message="Loading Report..."
+              description="Retrieving saved verification data."
+            />
           </CardContent>
         </Card>
       </div>
