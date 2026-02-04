@@ -159,6 +159,27 @@ export function removePunctuation(str: string): string {
   return str.replace(/[.,;:!?'"()\-–—]/g, '');
 }
 
+/**
+ * Removes diacritics/accents from a string for fuzzy comparison.
+ * Uses Unicode NFD normalization to decompose characters, then strips combining marks.
+ * 
+ * Examples:
+ * - "Bärenjäger" → "Barenjager"
+ * - "Café" → "Cafe"
+ * - "Château" → "Chateau"
+ * - "naïve" → "naive"
+ * - "señor" → "senor"
+ * 
+ * @param str - The string to process
+ * @returns The string with diacritics removed
+ */
+export function removeAccents(str: string): string {
+  if (!str) return str;
+  // NFD normalization decomposes characters into base + combining marks
+  // Then we remove all combining diacritical marks (Unicode range U+0300 to U+036F)
+  return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
 // ============================================================================
 // File Utilities
 // ============================================================================
