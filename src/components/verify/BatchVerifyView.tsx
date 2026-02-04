@@ -2,12 +2,26 @@
 
 import { Upload, Layers, Play, ClipboardList } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, Button } from '@/components/ui';
+import { UploadDropzone } from './UploadDropzone';
+import { ThumbnailList } from './ThumbnailList';
+import { useImageUpload } from './useImageUpload';
 
 /**
  * BatchVerifyView component for verifying multiple applications
  * with auto-grouping and manual grouping support.
  */
 export function BatchVerifyView() {
+  const {
+    images,
+    addFiles,
+    removeImage,
+    hasImages,
+    isProcessing,
+  } = useImageUpload();
+
+  // Determine if verification can be run
+  const canRunVerification = hasImages && !isProcessing;
+
   return (
     <div className="space-y-6">
       {/* Batch Upload section */}
@@ -19,21 +33,17 @@ export function BatchVerifyView() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-zinc-300 bg-zinc-50 py-12 dark:border-zinc-700 dark:bg-zinc-800/50">
-            <Upload className="h-10 w-10 text-zinc-400" aria-hidden="true" />
-            <p className="mt-4 text-sm font-medium text-zinc-700 dark:text-zinc-300">
-              Drop multiple label images here
-            </p>
-            <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-              or click to browse files
-            </p>
-            <p className="mt-3 text-xs text-zinc-400 dark:text-zinc-500">
-              Accepts JPG and PNG files
-            </p>
-          </div>
-          <p className="mt-3 text-sm text-zinc-500 dark:text-zinc-400">
-            Upload images for multiple applications. Images will be auto-grouped by filename when possible.
-          </p>
+          <UploadDropzone
+            onFilesAccepted={addFiles}
+            disabled={isProcessing}
+            helperText="Upload images for multiple applications. Images will be auto-grouped by filename when possible."
+          />
+          <ThumbnailList
+            images={images}
+            onRemove={removeImage}
+            canRemove={!isProcessing}
+            showCheckboxes={hasImages}
+          />
         </CardContent>
       </Card>
 
@@ -62,11 +72,11 @@ export function BatchVerifyView() {
 
       {/* Batch Actions */}
       <div className="flex flex-wrap items-center justify-center gap-3">
-        <Button size="lg" disabled>
+        <Button size="lg" disabled={!canRunVerification}>
           <Play className="h-4 w-4" aria-hidden="true" />
           Run Batch Verification
         </Button>
-        <Button variant="secondary" size="md" disabled>
+        <Button variant="secondary" size="md" disabled={!hasImages || isProcessing}>
           Group Selected
         </Button>
         <Button variant="secondary" size="md" disabled>
