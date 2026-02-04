@@ -1,7 +1,8 @@
 'use client';
 
-import { X } from 'lucide-react';
-import { StatusBadge, Button } from '@/components/ui';
+import { useState, useCallback } from 'react';
+import { X, Eye } from 'lucide-react';
+import { StatusBadge, Button, ImagePreviewModal } from '@/components/ui';
 import type { ImageItemWithStatus } from '@/lib/types';
 import { formatBytes } from '@/lib/utils';
 
@@ -20,6 +21,7 @@ export interface ThumbnailListProps {
   canRemove?: boolean;
   /**
    * Optional callback when an image thumbnail is clicked (for preview)
+   * If not provided and enablePreviewModal is true, the built-in modal will be used
    */
   onImageClick?: (image: ImageItemWithStatus) => void;
   /**
@@ -34,6 +36,10 @@ export interface ThumbnailListProps {
    * Callback when an image selection changes
    */
   onSelectionChange?: (imageId: string, selected: boolean) => void;
+  /**
+   * Whether to enable the built-in image preview modal (default: true)
+   */
+  enablePreviewModal?: boolean;
 }
 
 /**
@@ -118,7 +124,7 @@ function ThumbnailItem({
       <div
         className={`
           relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-md bg-zinc-100 dark:bg-zinc-700
-          ${onImageClick ? 'cursor-pointer' : ''}
+          ${onImageClick ? 'cursor-pointer group/thumb' : ''}
         `}
         onClick={handleImageClick}
         onKeyDown={handleKeyDown}
@@ -130,8 +136,14 @@ function ThumbnailItem({
         <img
           src={image.previewUrl}
           alt={image.name}
-          className="h-full w-full object-cover"
+          className="h-full w-full object-cover transition-transform duration-150 group-hover/thumb:scale-105"
         />
+        {/* Hover overlay for clickable preview */}
+        {onImageClick && image.status !== 'processing' && (
+          <div className="absolute inset-0 bg-black/0 group-hover/thumb:bg-black/40 transition-colors duration-150 flex items-center justify-center">
+            <Eye className="h-5 w-5 text-white opacity-0 group-hover/thumb:opacity-100 transition-opacity duration-150 drop-shadow-lg" />
+          </div>
+        )}
         {/* Loading overlay for processing state */}
         {image.status === 'processing' && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/30">
@@ -185,7 +197,7 @@ function ThumbnailItem({
 /**
  * ThumbnailList component displays uploaded images with their processing status.
  * Each thumbnail shows:
- * - Image preview
+ * - Image preview (clickable to open full-size modal)
  * - Filename
  * - File size
  * - Status badge (Queued, Processing, Completed, Error)
@@ -199,37 +211,104 @@ export function ThumbnailList({
   showCheckboxes = false,
   selectedIds = new Set(),
   onSelectionChange,
+  enablePreviewModal = true,
 }: ThumbnailListProps) {
+  // Internal modal state
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalIndex, setModalIndex] = useState(0);
+
+  /**
+   * Handle image thumbnail click
+   */
+  const handleImageClick = useCallback((image: ImageItemWithStatus) => {
+    // If external handler is provided, use it
+    if (onImageClick) {
+      onImageClick(image);
+      return;
+    }
+    
+    // Otherwise use internal modal if enabled
+    if (enablePreviewModal) {
+      const index = images.findIndex((img) => img.id === image.id);
+      if (index !== -1) {
+        setModalIndex(index);
+        setModalOpen(true);
+      }
+    }
+  }, [onImageClick, enablePreviewModal, images]);
+
+  /**
+   * Handle modal close
+   */
+  const handleModalClose = useCallback(() => {
+    setModalOpen(false);
+  }, []);
+
+  /**
+   * Handle modal index change
+   */
+  const handleModalIndexChange = useCallback((index: number) => {
+    setModalIndex(index);
+  }, []);
+
   if (images.length === 0) {
     return null;
   }
 
+  // Determine if we should show the click handler (either external or internal modal)
+  const shouldEnableClick = onImageClick || enablePreviewModal;
+
+  // Prepare image URLs and alt texts for the modal
+  const imageUrls = images.map((img) => img.previewUrl);
+  const imageAltTexts = images.map((img) => img.name);
+
   return (
-    <div className="mt-4 space-y-2">
-      <div className="flex items-center justify-between">
-        <h4 className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-          Uploaded Images ({images.length})
-        </h4>
-        {showCheckboxes && selectedIds.size > 0 && (
-          <span className="text-xs text-zinc-500 dark:text-zinc-400">
-            {selectedIds.size} selected
-          </span>
-        )}
+    <>
+      <div className="mt-4 space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <h4 className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+              Uploaded Images ({images.length})
+            </h4>
+            {shouldEnableClick && (
+              <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                Click to preview
+              </span>
+            )}
+          </div>
+          {showCheckboxes && selectedIds.size > 0 && (
+            <span className="text-xs text-zinc-500 dark:text-zinc-400">
+              {selectedIds.size} selected
+            </span>
+          )}
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {images.map((image) => (
+            <ThumbnailItem
+              key={image.id}
+              image={image}
+              onRemove={onRemove}
+              canRemove={canRemove}
+              onImageClick={shouldEnableClick ? handleImageClick : undefined}
+              showCheckbox={showCheckboxes}
+              isSelected={selectedIds.has(image.id)}
+              onSelectionChange={onSelectionChange}
+            />
+          ))}
+        </div>
       </div>
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-        {images.map((image) => (
-          <ThumbnailItem
-            key={image.id}
-            image={image}
-            onRemove={onRemove}
-            canRemove={canRemove}
-            onImageClick={onImageClick}
-            showCheckbox={showCheckboxes}
-            isSelected={selectedIds.has(image.id)}
-            onSelectionChange={onSelectionChange}
-          />
-        ))}
-      </div>
-    </div>
+
+      {/* Image preview modal (only rendered if using internal modal) */}
+      {enablePreviewModal && !onImageClick && (
+        <ImagePreviewModal
+          imageUrls={imageUrls}
+          currentIndex={modalIndex}
+          isOpen={modalOpen}
+          onClose={handleModalClose}
+          onIndexChange={handleModalIndexChange}
+          altTexts={imageAltTexts}
+        />
+      )}
+    </>
   );
 }

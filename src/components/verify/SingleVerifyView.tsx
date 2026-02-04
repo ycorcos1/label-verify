@@ -251,6 +251,7 @@ export function SingleVerifyView() {
                   result={verificationResult.applicationResult}
                   extractedValues={verificationResult.extractedValues}
                   imagePreviewUrls={images.map((img) => img.previewUrl)}
+                  imageAltTexts={images.map((img) => img.name)}
                 />
               )}
             </div>

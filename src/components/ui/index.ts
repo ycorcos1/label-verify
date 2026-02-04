@@ -18,3 +18,7 @@ export { Tabs, TabsList, TabsTrigger, TabsContent } from './Tabs';
 // Status components
 export { StatusBadge } from './StatusBadge';
 export type { StatusType, StatusBadgeProps } from './StatusBadge';
+
+// Modal components
+export { ImagePreviewModal } from './ImagePreviewModal';
+export type { ImagePreviewModalProps } from './ImagePreviewModal';

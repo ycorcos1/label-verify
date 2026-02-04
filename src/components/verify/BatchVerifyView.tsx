@@ -225,6 +225,28 @@ export function BatchVerifyView() {
     return [];
   }, [selectedApplicationId, groups, ungroupedImages]);
 
+  /**
+   * Get image names for the selected application (used as alt text)
+   */
+  const selectedAppImageNames = useMemo<string[]>(() => {
+    if (!selectedApplicationId) return [];
+
+    // Check if it's a grouped application
+    const group = groups.find((g) => g.id === selectedApplicationId);
+    if (group) {
+      return group.images.map((img) => img.name);
+    }
+
+    // Check if it's an ungrouped application
+    const ungroupedId = selectedApplicationId.replace('ungrouped-', '');
+    const ungroupedImage = ungroupedImages.find((img) => img.id === ungroupedId);
+    if (ungroupedImage) {
+      return [ungroupedImage.name];
+    }
+
+    return [];
+  }, [selectedApplicationId, groups, ungroupedImages]);
+
   return (
     <div className="space-y-6">
       {/* Batch Upload section */}
@@ -512,6 +534,7 @@ export function BatchVerifyView() {
                   result={selectedApplicationResult.result}
                   extractedValues={selectedApplicationResult.extractedValues || undefined}
                   imagePreviewUrls={selectedAppImageUrls}
+                  imageAltTexts={selectedAppImageNames}
                 />
               ) : null}
               
