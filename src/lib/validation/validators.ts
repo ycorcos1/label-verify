@@ -17,7 +17,7 @@ import {
   ApplicationValues,
   OverallStatus,
 } from '@/lib/types';
-import { generateUUID, normalizeWhitespace, normalizeForComparison, removePunctuation } from '@/lib/utils';
+import { generateUUID, normalizeWhitespace, normalizeForComparison, removePunctuation, removeAccents } from '@/lib/utils';
 import { FieldProvenance, MergedExtractionResult } from '@/lib/utils/mergeExtractions';
 
 // ============================================================================
@@ -207,16 +207,27 @@ export function compareTextField(
     return { status: FieldStatus.Pass };
   }
 
+  // Comparison with accent/diacritic normalization
+  // This handles cases like "Bärenjäger" vs "Barenjager", "Café" vs "Cafe"
+  const noAccentExtracted = removeAccents(noPunctExtracted);
+  const noAccentExpected = removeAccents(noPunctExpected);
+
+  if (noAccentExtracted === noAccentExpected) {
+    // Same content after accent normalization - pass
+    return { status: FieldStatus.Pass };
+  }
+
   // Check for containment (one contains the other)
-  if (normalizedExtracted.includes(normalizedExpected) || 
-      normalizedExpected.includes(normalizedExtracted)) {
+  // Use accent-normalized versions for more robust matching
+  if (noAccentExtracted.includes(noAccentExpected) || 
+      noAccentExpected.includes(noAccentExtracted)) {
     // One is a substring of the other
-    const shorter = normalizedExtracted.length < normalizedExpected.length 
-      ? normalizedExtracted 
-      : normalizedExpected;
-    const longer = normalizedExtracted.length >= normalizedExpected.length 
-      ? normalizedExtracted 
-      : normalizedExpected;
+    const shorter = noAccentExtracted.length < noAccentExpected.length 
+      ? noAccentExtracted 
+      : noAccentExpected;
+    const longer = noAccentExtracted.length >= noAccentExpected.length 
+      ? noAccentExtracted 
+      : noAccentExpected;
     
     const ratio = shorter.length / longer.length;
     
@@ -236,8 +247,9 @@ export function compareTextField(
   }
 
   // Calculate word-level similarity for longer strings
-  const extractedWords = normalizedExtracted.split(/\s+/);
-  const expectedWords = normalizedExpected.split(/\s+/);
+  // Use accent-normalized versions for more robust matching
+  const extractedWords = noAccentExtracted.split(/\s+/);
+  const expectedWords = noAccentExpected.split(/\s+/);
   
   if (extractedWords.length >= 2 && expectedWords.length >= 2) {
     const commonWords = extractedWords.filter(w => 
