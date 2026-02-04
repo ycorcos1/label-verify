@@ -255,6 +255,16 @@ export interface Report {
 // ============================================================================
 
 /**
+ * Font size observation for government warning
+ */
+export type GovernmentWarningFontSize = 'normal' | 'small' | 'very_small';
+
+/**
+ * Visibility observation for government warning
+ */
+export type GovernmentWarningVisibility = 'prominent' | 'moderate' | 'subtle';
+
+/**
  * Raw extraction response from OpenAI for a single image
  */
 export interface ExtractionResponse {
@@ -272,6 +282,12 @@ export interface ExtractionResponse {
   countryOfOrigin: string | null;
   /** Government warning statement */
   governmentWarning: string | null;
+  /** Whether "GOVERNMENT WARNING:" appears bold (visual observation) */
+  governmentWarningIsBold?: boolean | null;
+  /** Relative font size of the warning text (visual observation) */
+  governmentWarningFontSize?: GovernmentWarningFontSize | null;
+  /** Overall visibility/prominence of the warning (visual observation) */
+  governmentWarningVisibility?: GovernmentWarningVisibility | null;
   /** Confidence level (0-1) if available */
   confidence?: number;
   /** Any notes or observations from extraction */

@@ -27,6 +27,16 @@ export {
 // ============================================================================
 
 /**
+ * Schema for government warning font size observation
+ */
+export const GovernmentWarningFontSizeSchema = z.enum(['normal', 'small', 'very_small']);
+
+/**
+ * Schema for government warning visibility observation
+ */
+export const GovernmentWarningVisibilitySchema = z.enum(['prominent', 'moderate', 'subtle']);
+
+/**
  * Schema for the raw extraction response from OpenAI
  * This enforces strict JSON structure for the model output
  */
@@ -38,6 +48,10 @@ export const ExtractionResponseSchema = z.object({
   bottlerProducer: z.string().nullable(),
   countryOfOrigin: z.string().nullable(),
   governmentWarning: z.string().nullable(),
+  // Formatting observation fields (v2)
+  governmentWarningIsBold: z.boolean().nullable().optional(),
+  governmentWarningFontSize: GovernmentWarningFontSizeSchema.nullable().optional(),
+  governmentWarningVisibility: GovernmentWarningVisibilitySchema.nullable().optional(),
   confidence: z.number().min(0).max(1).optional(),
   notes: z.string().optional(),
 });
