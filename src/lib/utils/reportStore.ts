@@ -27,6 +27,8 @@ export interface ReportListItem {
   mode: VerificationMode;
   summary: ReportSummary;
   totalDurationMs: number;
+  /** Brand name for display (extracted or user-provided, with fallback to "Unknown Brand") */
+  brandName: string;
 }
 
 export interface CreateReportParams {
@@ -272,6 +274,49 @@ export async function saveApplicationsAsReports(
 }
 
 /**
+ * Extracts the brand name from a report with fallback logic.
+ * 
+ * Fallback hierarchy:
+ * 1. Extracted brand name from the first application's extractedValues
+ * 2. User-provided brand name from the first application's applicationValues
+ * 3. "Unknown Brand" as the final fallback
+ * 
+ * @param report - The report to extract brand name from
+ * @returns The brand name string
+ */
+export function getBrandName(report: Report): string {
+  const firstApp = report.applications[0];
+  if (!firstApp) {
+    return 'Unknown Brand';
+  }
+
+  // Priority 1: Extracted brand from OCR
+  const extractedBrand = firstApp.extractedValues?.brand;
+  if (extractedBrand && extractedBrand.trim() !== '') {
+    return extractedBrand.trim();
+  }
+
+  // Priority 2: User-provided brand from application values
+  const userBrand = firstApp.applicationValues?.brand;
+  if (userBrand && userBrand.trim() !== '') {
+    return userBrand.trim();
+  }
+
+  // Priority 3: Application name (which might be derived from filename)
+  // Only use if it looks like a real brand name (not generic like "Application" or "ungrouped-xxx")
+  const appName = firstApp.name;
+  if (appName && 
+      appName.trim() !== '' && 
+      appName !== 'Application' && 
+      !appName.startsWith('ungrouped-')) {
+    return appName.trim();
+  }
+
+  // Final fallback
+  return 'Unknown Brand';
+}
+
+/**
  * Lists all reports, sorted by createdAt descending (newest first)
  * @returns A list of report summaries or an error
  */
@@ -294,6 +339,7 @@ export async function listReports(): Promise<ReportStoreResult<ReportListItem[]>
       mode: report.mode,
       summary: report.summary,
       totalDurationMs: report.totalDurationMs,
+      brandName: getBrandName(report),
     })).reverse();
 
     return { success: true, data: items };

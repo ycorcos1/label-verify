@@ -38,6 +38,7 @@ export {
   exportReportAsJson,
   downloadReportJson,
   isIndexedDBAvailable,
+  getBrandName,
   type ReportListItem,
   type CreateReportParams,
   type CreateSingleAppReportParams,
