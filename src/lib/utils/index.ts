@@ -213,3 +213,87 @@ export function formatDate(isoString: string): string {
     minute: '2-digit',
   });
 }
+
+// ============================================================================
+// Filename Normalization for Auto-Grouping
+// ============================================================================
+
+/**
+ * Common suffixes to remove for grouping (front, back, label, etc.)
+ * Matches patterns like: _front, -front, _back, -back, _label, -label, etc.
+ */
+const PANEL_SUFFIX_PATTERN = /[_\-\s]*(front|back|label|other|side|left|right|top|bottom|detail|close|closeup|close-up)\s*\d*$/i;
+
+/**
+ * Patterns that indicate a non-descriptive filename (should not be auto-grouped)
+ */
+const NON_DESCRIPTIVE_PATTERNS = [
+  /^img[_\-\s]?\d+$/i,           // img_1234, IMG1234, etc.
+  /^dsc[_\-\s]?\d+$/i,           // DSC_1234, DSC1234, etc.
+  /^dscn?\d+$/i,                 // DSCN1234, DSC1234
+  /^photo[_\-\s]?\d+$/i,         // photo_001, photo1, etc.
+  /^image[_\-\s]?\d+$/i,         // image_001, image1, etc.
+  /^pic[_\-\s]?\d+$/i,           // pic_001, pic1, etc.
+  /^screenshot[_\-\s]?\d*$/i,    // screenshot, screenshot_1, etc.
+  /^\d+$/,                       // purely numeric: 1234, 001, etc.
+  /^[a-f0-9]{8,}$/i,             // hex strings (UUIDs, hashes)
+  /^[a-z0-9]{8}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{12}$/i, // UUID format
+];
+
+/**
+ * Checks if a filename base is non-descriptive (generic camera/system name)
+ * @param baseName - The filename without extension
+ * @returns true if the filename is non-descriptive
+ */
+export function isNonDescriptiveFilename(baseName: string): boolean {
+  const normalized = baseName.trim().toLowerCase();
+  return NON_DESCRIPTIVE_PATTERNS.some(pattern => pattern.test(normalized));
+}
+
+/**
+ * Normalizes a filename for grouping purposes:
+ * 1. Strip extension
+ * 2. Lowercase
+ * 3. Remove common panel suffixes (_front, _back, _label, etc.)
+ * 
+ * @param filename - The original filename
+ * @returns The normalized base name for grouping, or null if non-descriptive
+ */
+export function normalizeFilenameForGrouping(filename: string): string | null {
+  // Get base name without extension
+  const baseName = getBaseName(filename);
+  
+  // Check if non-descriptive first
+  if (isNonDescriptiveFilename(baseName)) {
+    return null;
+  }
+  
+  // Normalize: lowercase and remove panel suffixes
+  let normalized = baseName.toLowerCase().trim();
+  
+  // Remove panel suffix patterns
+  normalized = normalized.replace(PANEL_SUFFIX_PATTERN, '');
+  
+  // Clean up any trailing underscores, hyphens, or numbers left over
+  normalized = normalized.replace(/[_\-\s]+\d*$/, '').trim();
+  
+  // If we end up with something too short or non-descriptive after normalization
+  if (normalized.length < 2 || isNonDescriptiveFilename(normalized)) {
+    return null;
+  }
+  
+  return normalized;
+}
+
+/**
+ * Converts a normalized group key to a display name
+ * @param normalizedKey - The normalized filename key
+ * @returns A human-readable display name
+ */
+export function groupKeyToDisplayName(normalizedKey: string): string {
+  // Capitalize first letter of each word, replace separators with spaces
+  return normalizedKey
+    .replace(/[_\-]+/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+    .trim();
+}

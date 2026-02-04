@@ -71,7 +71,7 @@ const statusConfigs: Record<StatusType, StatusConfig> = {
   },
 };
 
-interface StatusBadgeProps {
+export interface StatusBadgeProps {
   /** The status to display */
   status: StatusType;
   /** Optional custom label override */
@@ -80,7 +80,14 @@ interface StatusBadgeProps {
   className?: string;
   /** Whether to show only the icon (for compact displays) */
   iconOnly?: boolean;
+  /** Size variant */
+  size?: 'sm' | 'md';
 }
+
+const sizeClasses = {
+  sm: 'h-3 w-3',
+  md: 'h-3.5 w-3.5',
+};
 
 /**
  * StatusBadge component displays a status with an icon and label.
@@ -101,15 +108,17 @@ export function StatusBadge({
   label,
   className = '',
   iconOnly = false,
+  size = 'md',
 }: StatusBadgeProps) {
   const config = statusConfigs[status];
   const IconComponent = config.icon;
   const displayLabel = label || config.label;
+  const iconSizeClass = sizeClasses[size];
 
   return (
-    <Badge variant={config.variant} className={className}>
+    <Badge variant={config.variant} className={className} size={size}>
       <IconComponent
-        className={`h-3.5 w-3.5 ${status === 'processing' ? 'animate-spin' : ''}`}
+        className={`${iconSizeClass} ${status === 'processing' ? 'animate-spin' : ''}`}
         aria-hidden="true"
       />
       {!iconOnly && <span>{displayLabel}</span>}

@@ -1,10 +1,12 @@
 import { ReactNode } from 'react';
 
-interface CardProps {
+export interface CardProps {
   children: ReactNode;
   className?: string;
   /** Optional left accent color for status indication */
   accentColor?: 'green' | 'red' | 'yellow' | 'blue' | 'gray';
+  /** Optional click handler */
+  onClick?: () => void;
 }
 
 const accentColorClasses = {
@@ -15,14 +17,18 @@ const accentColorClasses = {
   gray: 'border-l-zinc-400',
 };
 
-export function Card({ children, className = '', accentColor }: CardProps) {
+export function Card({ children, className = '', accentColor, onClick }: CardProps) {
   const accentClass = accentColor
     ? `border-l-4 ${accentColorClasses[accentColor]}`
     : '';
 
   return (
     <div
-      className={`rounded-lg border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900 ${accentClass} ${className}`}
+      className={`group rounded-lg border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900 ${accentClass} ${className}`}
+      onClick={onClick}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={onClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } } : undefined}
     >
       {children}
     </div>

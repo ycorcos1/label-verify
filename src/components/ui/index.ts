@@ -6,6 +6,7 @@
 
 // Layout components
 export { Card, CardHeader, CardTitle, CardContent, CardFooter } from './Card';
+export type { CardProps } from './Card';
 
 // Form components
 export { Button } from './Button';
@@ -16,4 +17,4 @@ export { Tabs, TabsList, TabsTrigger, TabsContent } from './Tabs';
 
 // Status components
 export { StatusBadge } from './StatusBadge';
-export type { StatusType } from './StatusBadge';
+export type { StatusType, StatusBadgeProps } from './StatusBadge';
