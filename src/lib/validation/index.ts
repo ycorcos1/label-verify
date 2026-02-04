@@ -144,6 +144,8 @@ export const ReportApplicationSchema = z.object({
   extractedValues: ExtractedValuesSchema,
   applicationValues: ApplicationValuesSchema.optional(),
   result: ApplicationResultSchema,
+  imageThumbnails: z.array(z.string()).optional(),
+  imageNames: z.array(z.string()).optional(),
 });
 
 /**

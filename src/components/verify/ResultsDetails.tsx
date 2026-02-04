@@ -189,9 +189,9 @@ function WarningBlock({ warningResult }: WarningBlockProps) {
               )}
             </div>
 
-            {/* Sub-status checks in a grid */}
+            {/* Sub-status checks with flex-wrap for natural wrapping */}
             {hasWarning && (
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div className="flex flex-wrap gap-2">
                 {/* Wording check */}
                 <div className="flex items-center gap-2 text-sm rounded-md bg-white/40 dark:bg-black/10 px-2.5 py-1.5">
                   {getWarningIcon(warningResult.wordingStatus)}

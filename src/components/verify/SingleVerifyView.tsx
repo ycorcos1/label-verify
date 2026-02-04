@@ -11,7 +11,7 @@ import { ResultsDetails } from './ResultsDetails';
 import { useImageUpload } from './useImageUpload';
 import { useApplicationValues } from './useApplicationValues';
 import { useVerification, type VerificationResult } from './useVerification';
-import { generateUUID, safeJsonStringifyPretty, saveReport, downloadReportJson, type CreateReportParams } from '@/lib/utils';
+import { generateUUID, safeJsonStringifyPretty, saveReport, downloadReportJson, createThumbnail, type CreateReportParams } from '@/lib/utils';
 import type { ReportApplication, Report } from '@/lib/types';
 
 /**
@@ -91,6 +91,12 @@ export function SingleVerifyView() {
 
     // Auto-save report after verification completes
     if (result && result.applicationResult) {
+      // Create thumbnails for persistence (300px max, smaller for storage)
+      const thumbnails = await Promise.all(
+        images.map(img => createThumbnail(img.file, 300))
+      );
+      const imageNames = images.map(img => img.name);
+
       const reportApp: ReportApplication = {
         id: applicationId,
         name: 'Label Application',
@@ -98,6 +104,8 @@ export function SingleVerifyView() {
         extractedValues: result.extractedValues,
         applicationValues: applicationValues,
         result: result.applicationResult,
+        imageThumbnails: thumbnails,
+        imageNames: imageNames,
       };
 
       const params: CreateReportParams = {
@@ -117,12 +125,17 @@ export function SingleVerifyView() {
         
         // Store pending report data for forced download
         if (isQuota) {
-          // Create a temporary report structure for download
+          // Create a temporary report structure for download (without thumbnails to reduce size)
+          const reportAppWithoutThumbnails: ReportApplication = {
+            ...reportApp,
+            imageThumbnails: undefined,
+            imageNames: imageNames,
+          };
           const tempReport: Report = {
             id: generateUUID(),
             createdAt: new Date().toISOString(),
             mode: 'single',
-            applications: [reportApp],
+            applications: [reportAppWithoutThumbnails],
             summary: {
               total: 1,
               pass: result.applicationResult.overallStatus === 'pass' ? 1 : 0,

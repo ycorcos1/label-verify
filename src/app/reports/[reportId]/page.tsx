@@ -400,20 +400,22 @@ export default function ReportDetailPage({ params }: ReportDetailPageProps) {
         </Card>
       )}
 
-      {/* Images not stored banner */}
-      <Card accentColor="yellow">
-        <CardContent className="flex items-start gap-3 py-4">
-          <Info className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-500" aria-hidden="true" />
-          <div>
-            <p className="text-sm font-medium text-zinc-900 dark:text-zinc-50">
-              Images not stored
-            </p>
-            <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-              Re-upload required to re-run verification. Only extracted data and validation results are saved.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Images not stored banner - only show if no images were saved */}
+      {!report.applications.some(app => app.imageThumbnails && app.imageThumbnails.length > 0) && (
+        <Card accentColor="yellow">
+          <CardContent className="flex items-start gap-3 py-4">
+            <Info className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-500" aria-hidden="true" />
+            <div>
+              <p className="text-sm font-medium text-zinc-900 dark:text-zinc-50">
+                Images not stored
+              </p>
+              <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+                Re-upload required to re-run verification. Only extracted data and validation results are saved.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Summary Stats */}
       <SummaryStats report={report} />
@@ -466,9 +468,9 @@ export default function ReportDetailPage({ params }: ReportDetailPageProps) {
                   <ResultsDetails
                     result={selectedApp.result}
                     extractedValues={selectedApp.extractedValues}
-                    imagePreviewUrls={[]}
-                    imageAltTexts={[]}
-                    showImagePreviewModal={false}
+                    imagePreviewUrls={selectedApp.imageThumbnails || []}
+                    imageAltTexts={selectedApp.imageNames || []}
+                    showImagePreviewModal={selectedApp.imageThumbnails && selectedApp.imageThumbnails.length > 0}
                   />
                 )}
               </div>

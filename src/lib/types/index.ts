@@ -211,7 +211,7 @@ export interface ReportSummary {
 }
 
 /**
- * Application data stored in a report (without images)
+ * Application data stored in a report (with optional image thumbnails)
  */
 export interface ReportApplication {
   /** Unique identifier */
@@ -226,6 +226,10 @@ export interface ReportApplication {
   applicationValues?: ApplicationValues;
   /** Validation result */
   result: ApplicationResult;
+  /** Base64 encoded thumbnail images for preview (optional) */
+  imageThumbnails?: string[];
+  /** Original image filenames */
+  imageNames?: string[];
 }
 
 /**

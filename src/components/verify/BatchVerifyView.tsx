@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { Upload, Layers, Play, ClipboardList, Users, File, Info, FileText, RefreshCw, AlertTriangle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, Button, ErrorBanner, LoadingState, ProcessingProgress, ApplicationErrorCard, detectErrorType } from '@/components/ui';
 import { UploadDropzone } from './UploadDropzone';
@@ -16,7 +16,7 @@ import { useImageGrouping } from './useImageGrouping';
 import { useApplicationValues } from './useApplicationValues';
 import { useBatchVerification, type BatchApplicationResult } from './useBatchVerification';
 import type { ApplicationValues } from '@/lib/types';
-import { formatDuration, saveReport, downloadReportJson, generateUUID, type CreateReportParams } from '@/lib/utils';
+import { formatDuration, saveReport, downloadReportJson, generateUUID, createThumbnail, type CreateReportParams } from '@/lib/utils';
 import type { ReportApplication, Report } from '@/lib/types';
 
 /**
@@ -77,6 +77,14 @@ export function BatchVerifyView() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [isQuotaError, setIsQuotaError] = useState(false);
   const [pendingReportData, setPendingReportData] = useState<Report | null>(null);
+
+  // Refs to access current groups/ungroupedImages in effects without adding to deps
+  const groupsRef = useRef(groups);
+  const ungroupedImagesRef = useRef(ungroupedImages);
+  useEffect(() => {
+    groupsRef.current = groups;
+    ungroupedImagesRef.current = ungroupedImages;
+  }, [groups, ungroupedImages]);
 
   // Update grouping when images change
   useEffect(() => {
@@ -153,11 +161,37 @@ export function BatchVerifyView() {
   useEffect(() => {
     const saveReportAfterCompletion = async () => {
       if (batchState === 'completed' || batchState === 'partial_error') {
-        // Build report applications from results
+        // Build report applications from results with thumbnails
         const reportApps: ReportApplication[] = [];
+        
+        // Use refs to get current values without triggering re-runs
+        const currentGroups = groupsRef.current;
+        const currentUngroupedImages = ungroupedImagesRef.current;
 
         for (const [appId, appResult] of applicationResults.entries()) {
           if (appResult.result) {
+            // Get images for this application to create thumbnails
+            let appImages: { file: File; name: string }[] = [];
+            
+            // Check if it's a grouped application
+            const group = currentGroups.find((g) => g.id === appId);
+            if (group) {
+              appImages = group.images.map((img) => ({ file: img.file, name: img.name }));
+            } else {
+              // Check if it's an ungrouped application
+              const ungroupedId = appId.replace('ungrouped-', '');
+              const ungroupedImage = currentUngroupedImages.find((img) => img.id === ungroupedId);
+              if (ungroupedImage) {
+                appImages = [{ file: ungroupedImage.file, name: ungroupedImage.name }];
+              }
+            }
+
+            // Create thumbnails for this application's images
+            const thumbnails = await Promise.all(
+              appImages.map(img => createThumbnail(img.file, 300))
+            );
+            const imageNames = appImages.map(img => img.name);
+
             reportApps.push({
               id: appId,
               name: appResult.applicationName,
@@ -165,6 +199,8 @@ export function BatchVerifyView() {
               extractedValues: appResult.extractedValues || {},
               applicationValues: applicationValuesMap.get(appId),
               result: appResult.result,
+              imageThumbnails: thumbnails,
+              imageNames: imageNames,
             });
           }
         }
@@ -185,14 +221,18 @@ export function BatchVerifyView() {
             setIsQuotaError(isQuota);
             setSaveError(result.error.message);
             
-            // Store pending report data for forced download
+            // Store pending report data for forced download (without thumbnails to reduce size)
             if (isQuota) {
+              const reportAppsWithoutThumbnails = reportApps.map(app => ({
+                ...app,
+                imageThumbnails: undefined,
+              }));
               // Create a temporary report structure for download
               const tempReport: Report = {
                 id: generateUUID(),
                 createdAt: new Date().toISOString(),
                 mode: 'batch',
-                applications: reportApps,
+                applications: reportAppsWithoutThumbnails,
                 summary: {
                   total: reportApps.length,
                   pass: reportApps.filter(a => a.result.overallStatus === 'pass').length,
