@@ -22,6 +22,7 @@ import {
   downloadReportJson,
   formatDate,
   formatDuration,
+  getBrandName,
 } from '@/lib/utils';
 import type { Report, ReportApplication } from '@/lib/types';
 import { useRouter } from 'next/navigation';
@@ -331,18 +332,24 @@ export default function ReportDetailPage({ params }: ReportDetailPageProps) {
           Reports
         </Link>
         <span>/</span>
-        <span className="font-mono text-xs truncate max-w-[150px]">{report.id.slice(0, 8)}</span>
+        <span className="truncate max-w-[200px]">{getBrandName(report)}</span>
       </div>
 
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50 capitalize">
-            {report.mode} Verification Report
-          </h1>
-          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-            {formatDate(report.createdAt)}
-          </p>
+        <div className="flex items-start gap-4">
+          <StatusBadge
+            status={mapOverallStatusToStatusType(report.applications[0]?.result.overallStatus || 'needs_review')}
+            size="lg"
+          />
+          <div>
+            <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">
+              {getBrandName(report)}
+            </h1>
+            <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+              {formatDate(report.createdAt)} • {report.applications[0]?.imageCount || 0} image{(report.applications[0]?.imageCount || 0) !== 1 ? 's' : ''} • {formatDuration(report.totalDurationMs)}
+            </p>
+          </div>
         </div>
 
         <div className="flex items-center gap-2">
