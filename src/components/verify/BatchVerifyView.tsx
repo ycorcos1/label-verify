@@ -1,28 +1,35 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
-import { Upload, Layers, Play, ClipboardList, Users, File, Info, FileText } from 'lucide-react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
+import { Upload, Layers, Play, ClipboardList, Users, File, Info, FileText, RefreshCw } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, Button } from '@/components/ui';
 import { UploadDropzone } from './UploadDropzone';
 import { ThumbnailList } from './ThumbnailList';
 import { ApplicationGroupCard } from './ApplicationGroupCard';
 import { UngroupedImageCard } from './UngroupedImageCard';
 import { ApplicationValuesForm } from './ApplicationValuesForm';
+import { ResultsDetails } from './ResultsDetails';
+import { BatchResultsFilters, type BatchFilterStatus } from './BatchResultsFilters';
+import { BatchApplicationList } from './BatchApplicationRow';
 import { useImageUpload } from './useImageUpload';
 import { useImageGrouping } from './useImageGrouping';
 import { useApplicationValues } from './useApplicationValues';
+import { useBatchVerification, type BatchApplicationResult } from './useBatchVerification';
+import type { ApplicationValues } from '@/lib/types';
+import { formatDuration } from '@/lib/utils';
 
 /**
  * BatchVerifyView component for verifying multiple applications
- * with auto-grouping and manual grouping support.
+ * with auto-grouping, manual grouping support, and controlled concurrency.
  */
 export function BatchVerifyView() {
   const {
     images,
     addFiles,
     removeImage,
+    updateImageStatus,
     hasImages,
-    isProcessing,
+    isProcessing: isUploading,
   } = useImageUpload();
 
   const {
@@ -35,6 +42,20 @@ export function BatchVerifyView() {
     renameGroup,
   } = useImageGrouping({ autoGroup: true });
 
+  // Batch verification hook with controlled concurrency
+  const {
+    state: batchState,
+    applicationResults,
+    summary: batchSummary,
+    runBatchVerification,
+    retryFailed,
+    reset: resetBatch,
+    filterByStatus,
+  } = useBatchVerification({ concurrencyLimit: 3 });
+
+  // Application values map for all applications
+  const [applicationValuesMap, setApplicationValuesMap] = useState<Map<string, ApplicationValues>>(new Map());
+
   // Application values for the selected application in details panel
   const {
     values: selectedAppValues,
@@ -43,6 +64,12 @@ export function BatchVerifyView() {
 
   // Track selected image IDs for manual grouping
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // Filter state for results
+  const [activeFilter, setActiveFilter] = useState<BatchFilterStatus>('all');
+
+  // Selected application for details panel
+  const [selectedApplicationId, setSelectedApplicationId] = useState<string | null>(null);
 
   // Update grouping when images change
   useEffect(() => {
@@ -80,10 +107,123 @@ export function BatchVerifyView() {
   const canGroup = selectedCount >= 2;
 
   // Determine if verification can be run
-  const canRunVerification = hasImages && !isProcessing;
+  const isProcessing = batchState === 'processing';
+  const canRunVerification = hasImages && !isProcessing && !isUploading;
 
   // Check if there are any groups or ungrouped images to display
   const hasApplications = groups.length > 0 || ungroupedImages.length > 0;
+
+  // Check if verification has been run
+  const hasResults = applicationResults.size > 0;
+
+  // Check if there are failed applications to retry
+  const hasFailedApplications = batchSummary.error > 0;
+
+  /**
+   * Handle running batch verification
+   */
+  const handleRunBatchVerification = useCallback(async () => {
+    // Reset batch state
+    resetBatch();
+    setSelectedApplicationId(null);
+    setActiveFilter('all');
+
+    await runBatchVerification(
+      groups,
+      ungroupedImages,
+      applicationValuesMap,
+      (imageId, status, error) => {
+        updateImageStatus(imageId, status, error);
+      }
+    );
+  }, [groups, ungroupedImages, applicationValuesMap, runBatchVerification, resetBatch, updateImageStatus]);
+
+  /**
+   * Handle retrying failed applications
+   */
+  const handleRetryFailed = useCallback(async () => {
+    await retryFailed(
+      groups,
+      ungroupedImages,
+      applicationValuesMap,
+      (imageId, status, error) => {
+        updateImageStatus(imageId, status, error);
+      }
+    );
+  }, [groups, ungroupedImages, applicationValuesMap, retryFailed, updateImageStatus]);
+
+  /**
+   * Handle updating application values for a specific application
+   */
+  const handleApplicationValuesChange = useCallback((appId: string, values: ApplicationValues) => {
+    setApplicationValuesMap((prev) => {
+      const next = new Map(prev);
+      next.set(appId, values);
+      return next;
+    });
+  }, []);
+
+  /**
+   * Get filtered results based on active filter
+   */
+  const filteredResults = useMemo(() => {
+    return filterByStatus(activeFilter);
+  }, [filterByStatus, activeFilter]);
+
+  /**
+   * Get selected application result
+   */
+  const selectedApplicationResult = useMemo<BatchApplicationResult | undefined>(() => {
+    if (!selectedApplicationId) return undefined;
+    return applicationResults.get(selectedApplicationId);
+  }, [selectedApplicationId, applicationResults]);
+
+  /**
+   * Update selected app values when selection changes
+   */
+  useEffect(() => {
+    if (selectedApplicationId) {
+      const appValues = applicationValuesMap.get(selectedApplicationId) || {};
+      setSelectedAppValues(appValues);
+    }
+  }, [selectedApplicationId, applicationValuesMap, setSelectedAppValues]);
+
+  /**
+   * Handle updating values for the selected application
+   */
+  const handleSelectedAppValuesChange = useCallback((values: ApplicationValues) => {
+    setSelectedAppValues(values);
+    if (selectedApplicationId) {
+      handleApplicationValuesChange(selectedApplicationId, values);
+    }
+  }, [selectedApplicationId, setSelectedAppValues, handleApplicationValuesChange]);
+
+  /**
+   * Get suggestions from the selected application's extracted values
+   */
+  const suggestions = selectedApplicationResult?.extractedValues || undefined;
+
+  /**
+   * Get image preview URLs for the selected application
+   */
+  const selectedAppImageUrls = useMemo<string[]>(() => {
+    if (!selectedApplicationId) return [];
+
+    // Check if it's a grouped application
+    const group = groups.find((g) => g.id === selectedApplicationId);
+    if (group) {
+      return group.images.map((img) => img.previewUrl);
+    }
+
+    // Check if it's an ungrouped application
+    const ungroupedId = selectedApplicationId.replace('ungrouped-', '');
+    const ungroupedImage = ungroupedImages.find((img) => img.id === ungroupedId);
+    if (ungroupedImage) {
+      return [ungroupedImage.previewUrl];
+    }
+
+    return [];
+  }, [selectedApplicationId, groups, ungroupedImages]);
 
   return (
     <div className="space-y-6">
@@ -237,24 +377,78 @@ export function BatchVerifyView() {
 
       {/* Batch Actions */}
       <div className="flex flex-wrap items-center justify-center gap-3">
-        <Button size="lg" disabled={!canRunVerification}>
-          <Play className="h-4 w-4" aria-hidden="true" />
-          Run Batch Verification
+        <Button
+          size="lg"
+          onClick={handleRunBatchVerification}
+          disabled={!canRunVerification}
+        >
+          {isProcessing ? (
+            <>
+              <RefreshCw className="h-4 w-4 animate-spin" aria-hidden="true" />
+              Processing...
+            </>
+          ) : (
+            <>
+              <Play className="h-4 w-4" aria-hidden="true" />
+              Run Batch Verification
+            </>
+          )}
         </Button>
-        <Button variant="secondary" size="md" disabled>
+        <Button
+          variant="secondary"
+          size="md"
+          onClick={handleRetryFailed}
+          disabled={!hasFailedApplications || isProcessing}
+        >
+          <RefreshCw className="h-4 w-4" aria-hidden="true" />
           Retry Failed
+          {hasFailedApplications && (
+            <span className="ml-1 text-xs">({batchSummary.error})</span>
+          )}
         </Button>
       </div>
 
-      {/* Results section with two-pane layout placeholder */}
+      {/* Results section with two-pane layout */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <ClipboardList className="h-5 w-5" aria-hidden="true" />
-            Results
-          </CardTitle>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <ClipboardList className="h-5 w-5" aria-hidden="true" />
+              Results
+            </CardTitle>
+            
+            {/* Batch summary stats */}
+            {hasResults && (
+              <div className="flex items-center gap-4 text-sm text-zinc-600 dark:text-zinc-400">
+                <span>
+                  {batchSummary.total} application{batchSummary.total !== 1 ? 's' : ''}
+                </span>
+                <span>
+                  {formatDuration(batchSummary.totalProcessingTimeMs)}
+                </span>
+              </div>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
+          {/* Filters */}
+          {hasResults && (
+            <div className="mb-4">
+              <BatchResultsFilters
+                activeFilter={activeFilter}
+                onFilterChange={setActiveFilter}
+                counts={{
+                  total: batchSummary.total,
+                  pass: batchSummary.pass,
+                  fail: batchSummary.fail,
+                  needsReview: batchSummary.needsReview,
+                  error: batchSummary.error,
+                }}
+                disabled={isProcessing}
+              />
+            </div>
+          )}
+
           {/* Two-pane layout for desktop */}
           <div className="grid gap-6 lg:grid-cols-2">
             {/* Left pane: Application list */}
@@ -262,12 +456,28 @@ export function BatchVerifyView() {
               <h4 className="mb-3 text-sm font-medium text-zinc-700 dark:text-zinc-300">
                 Applications
               </h4>
-              <div className="flex flex-col items-center justify-center py-6">
-                <ClipboardList className="h-6 w-6 text-zinc-400" aria-hidden="true" />
-                <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
-                  No results yet.
-                </p>
-              </div>
+              
+              {!hasResults && !isProcessing && (
+                <div className="flex flex-col items-center justify-center py-6">
+                  <ClipboardList className="h-6 w-6 text-zinc-400" aria-hidden="true" />
+                  <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
+                    No results yet.
+                  </p>
+                </div>
+              )}
+
+              {(hasResults || isProcessing) && (
+                <BatchApplicationList
+                  results={filteredResults}
+                  selectedId={selectedApplicationId || undefined}
+                  onSelect={setSelectedApplicationId}
+                  emptyMessage={
+                    activeFilter === 'all'
+                      ? 'No applications to display.'
+                      : `No applications with status "${activeFilter}".`
+                  }
+                />
+              )}
             </div>
 
             {/* Right pane: Details panel */}
@@ -275,35 +485,63 @@ export function BatchVerifyView() {
               <h4 className="mb-3 text-sm font-medium text-zinc-700 dark:text-zinc-300">
                 Details
               </h4>
-              <div className="flex flex-col items-center justify-center py-6">
-                <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                  Select an application to view details.
-                </p>
-              </div>
               
-              {/* Application Values form for selected application (shown when an app is selected) */}
-              {/* For now, show as collapsed section; will be connected when selection is implemented */}
-              <div className="mt-4 border-t border-zinc-200 pt-4 dark:border-zinc-700">
-                <h5 className="mb-3 flex items-center gap-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                  <FileText className="h-4 w-4" aria-hidden="true" />
-                  Application Values
-                  <span className="text-xs font-normal text-zinc-500 dark:text-zinc-400">
-                    (Optional)
-                  </span>
-                </h5>
-                <ApplicationValuesForm
-                  values={selectedAppValues}
-                  onChange={setSelectedAppValues}
-                  suggestions={undefined}
-                  disabled={isProcessing}
-                  compact
+              {!selectedApplicationResult ? (
+                <div className="flex flex-col items-center justify-center py-6">
+                  <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                    Select an application to view details.
+                  </p>
+                </div>
+              ) : selectedApplicationResult.status === 'queued' || selectedApplicationResult.status === 'processing' ? (
+                <div className="flex flex-col items-center justify-center py-6">
+                  <RefreshCw className="h-6 w-6 text-blue-500 animate-spin" aria-hidden="true" />
+                  <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
+                    {selectedApplicationResult.status === 'queued' ? 'Waiting in queue...' : 'Processing...'}
+                  </p>
+                </div>
+              ) : selectedApplicationResult.status === 'error' && !selectedApplicationResult.result ? (
+                <div className="flex flex-col items-center justify-center py-6">
+                  <div className="rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/30 p-4 text-center">
+                    <p className="text-sm text-red-700 dark:text-red-300">
+                      {selectedApplicationResult.errorMessage || 'An error occurred during processing.'}
+                    </p>
+                  </div>
+                </div>
+              ) : selectedApplicationResult.result ? (
+                <ResultsDetails
+                  result={selectedApplicationResult.result}
+                  extractedValues={selectedApplicationResult.extractedValues || undefined}
+                  imagePreviewUrls={selectedAppImageUrls}
                 />
-              </div>
+              ) : null}
+              
+              {/* Application Values form for selected application */}
+              {selectedApplicationId && (
+                <div className="mt-4 border-t border-zinc-200 pt-4 dark:border-zinc-700">
+                  <h5 className="mb-3 flex items-center gap-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                    <FileText className="h-4 w-4" aria-hidden="true" />
+                    Application Values
+                    <span className="text-xs font-normal text-zinc-500 dark:text-zinc-400">
+                      (Optional)
+                    </span>
+                  </h5>
+                  <ApplicationValuesForm
+                    values={selectedAppValues}
+                    onChange={handleSelectedAppValuesChange}
+                    suggestions={suggestions}
+                    disabled={isProcessing}
+                    compact
+                  />
+                </div>
+              )}
             </div>
           </div>
-          <p className="mt-4 text-sm text-zinc-500 dark:text-zinc-400">
-            Run batch verification to see progressive results as each application is processed.
-          </p>
+          
+          {!hasResults && !isProcessing && (
+            <p className="mt-4 text-sm text-zinc-500 dark:text-zinc-400">
+              Run batch verification to see progressive results as each application is processed.
+            </p>
+          )}
         </CardContent>
       </Card>
     </div>
