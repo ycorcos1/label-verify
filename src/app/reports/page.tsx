@@ -258,13 +258,13 @@ export default function ReportsPage() {
                         status={getPrimaryStatus(report.summary)}
                         size="sm"
                       />
-                      <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100 capitalize">
-                        {report.mode} Verification
-                      </span>
+                      <h3 className="text-base font-semibold text-zinc-900 dark:text-zinc-100 truncate">
+                        {report.brandName}
+                      </h3>
                     </div>
                     <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-zinc-500 dark:text-zinc-400">
                       <span>{formatDate(report.createdAt)}</span>
-                      <span>{report.summary.total} application{report.summary.total !== 1 ? 's' : ''}</span>
+                      <span>{report.summary.total === 1 ? `${report.summary.total} image` : `${report.summary.total} images`}</span>
                       <span>{formatDuration(report.totalDurationMs)}</span>
                     </div>
                     <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
