@@ -9,6 +9,9 @@ import type {
   WarningResult,
   FieldStatus,
   ExtractedValues,
+  BoldStatus,
+  GovernmentWarningFontSize,
+  GovernmentWarningVisibility,
 } from '@/lib/types';
 
 // ============================================================================
@@ -86,6 +89,87 @@ function truncateText(text: string | undefined, maxLength: number): string {
 
 interface WarningBlockProps {
   warningResult: WarningResult;
+  /** Image thumbnail URL for visual verification (optional) */
+  imageThumbnailUrl?: string;
+  /** Callback when thumbnail is clicked */
+  onImageClick?: () => void;
+}
+
+// ============================================================================
+// Bold Status Display Helpers
+// ============================================================================
+
+/**
+ * Gets the display configuration for bold status
+ */
+function getBoldStatusDisplay(status: BoldStatus): {
+  label: string;
+  icon: React.ReactNode;
+  bgClass: string;
+  textClass: string;
+  description?: string;
+} {
+  switch (status) {
+    case 'detected':
+      return {
+        label: 'Likely Bold',
+        icon: <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />,
+        bgClass: 'bg-emerald-100/50 dark:bg-emerald-900/20',
+        textClass: 'text-emerald-700 dark:text-emerald-300',
+        description: 'AI detected bold formatting',
+      };
+    case 'not_detected':
+      return {
+        label: 'Possibly Not Bold',
+        icon: <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" aria-hidden="true" />,
+        bgClass: 'bg-amber-100/50 dark:bg-amber-900/20',
+        textClass: 'text-amber-700 dark:text-amber-300',
+        description: 'AI did not detect bold formatting',
+      };
+    case 'manual_confirm':
+    default:
+      return {
+        label: 'Manual Confirm',
+        icon: <Eye className="h-4 w-4 text-blue-600 dark:text-blue-400" aria-hidden="true" />,
+        bgClass: 'bg-blue-100/50 dark:bg-blue-900/20',
+        textClass: 'text-blue-700 dark:text-blue-300',
+        description: 'Please verify visually',
+      };
+  }
+}
+
+/**
+ * Gets the display label for font size observation
+ */
+function getFontSizeLabel(fontSize: GovernmentWarningFontSize | null | undefined): string | null {
+  if (!fontSize) return null;
+  switch (fontSize) {
+    case 'very_small':
+      return 'Very Small Text';
+    case 'small':
+      return 'Small Text';
+    case 'normal':
+      return 'Normal Size';
+    default:
+      return null;
+  }
+}
+
+/**
+ * Gets the display label for visibility observation
+ */
+function getVisibilityLabel(visibility: GovernmentWarningVisibility | null | undefined): string | null {
+  if (!visibility) return null;
+  switch (visibility) {
+    case 'subtle':
+      return 'Low Visibility';
+    case 'moderate':
+      return 'Moderate Visibility';
+    case 'prominent':
+      return 'Prominent';
+    default:
+      return null;
+  }
 }
 
 /**
@@ -109,7 +193,7 @@ function getWarningIcon(status: FieldStatus) {
  * This is the most prominent validation result, displayed with
  * enhanced visual styling to draw attention and make reviews fast.
  */
-function WarningBlock({ warningResult }: WarningBlockProps) {
+function WarningBlock({ warningResult, imageThumbnailUrl, onImageClick }: WarningBlockProps) {
   const [expanded, setExpanded] = useState(false);
   const hasWarning = !!warningResult.extractedWarning;
   const warningText = warningResult.extractedWarning || 'Not found on label';
@@ -118,6 +202,15 @@ function WarningBlock({ warningResult }: WarningBlockProps) {
   const overallStatusType = mapFieldStatusToStatusType(warningResult.overallStatus);
   const wordingStatusType = mapFieldStatusToStatusType(warningResult.wordingStatus);
   const uppercaseStatusType = mapFieldStatusToStatusType(warningResult.uppercaseStatus);
+
+  // Get bold status display configuration
+  const boldDisplay = getBoldStatusDisplay(warningResult.boldStatus);
+  const needsManualBoldCheck = warningResult.boldStatus === 'manual_confirm' || warningResult.boldStatus === 'not_detected';
+
+  // Get formatting observations for display
+  const fontSizeLabel = getFontSizeLabel(warningResult.observedFontSize);
+  const visibilityLabel = getVisibilityLabel(warningResult.observedVisibility);
+  const hasFormattingObservations = fontSizeLabel || visibilityLabel;
 
   // Determine styling based on overall status
   let containerClass = 'bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-700';
@@ -206,19 +299,109 @@ function WarningBlock({ warningResult }: WarningBlockProps) {
                   <StatusBadge status={uppercaseStatusType} size="sm" />
                 </div>
                 
-                {/* Bold check - always manual confirm */}
-                <div className="flex items-center gap-2 text-sm rounded-md bg-amber-100/50 dark:bg-amber-900/20 px-2.5 py-1.5">
-                  <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" aria-hidden="true" />
+                {/* Bold check - enhanced with detection status */}
+                <div className={`flex items-center gap-2 text-sm rounded-md ${boldDisplay.bgClass} px-2.5 py-1.5`}>
+                  {boldDisplay.icon}
                   <span className="text-zinc-600 dark:text-zinc-300">Bold</span>
-                  <span className="text-xs font-medium text-amber-700 dark:text-amber-300 bg-amber-200/50 dark:bg-amber-800/30 px-1.5 py-0.5 rounded">
-                    Manual confirm
+                  <span className={`text-xs font-medium ${boldDisplay.textClass} bg-white/30 dark:bg-black/20 px-1.5 py-0.5 rounded`}>
+                    {boldDisplay.label}
                   </span>
                 </div>
               </div>
             )}
 
+            {/* Formatting observations section */}
+            {hasWarning && hasFormattingObservations && (
+              <div className="rounded-md bg-white/40 dark:bg-black/10 border border-zinc-200/30 dark:border-zinc-700/30 p-2.5">
+                <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wide mb-1.5">
+                  AI Formatting Observations
+                </p>
+                <div className="flex flex-wrap gap-2 text-xs">
+                  {fontSizeLabel && (
+                    <span className={`px-2 py-1 rounded ${
+                      warningResult.observedFontSize === 'very_small' 
+                        ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300'
+                        : warningResult.observedFontSize === 'small'
+                        ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300'
+                        : 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
+                    }`}>
+                      📏 {fontSizeLabel}
+                    </span>
+                  )}
+                  {visibilityLabel && (
+                    <span className={`px-2 py-1 rounded ${
+                      warningResult.observedVisibility === 'subtle'
+                        ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300'
+                        : warningResult.observedVisibility === 'moderate'
+                        ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300'
+                        : 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
+                    }`}>
+                      👁️ {visibilityLabel}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Manual verification prompt with image thumbnail */}
+            {hasWarning && needsManualBoldCheck && (
+              <div className="rounded-md border-2 border-dashed border-blue-300 dark:border-blue-700 bg-blue-50/50 dark:bg-blue-950/20 p-3">
+                <div className="flex items-start gap-3">
+                  {/* Image thumbnail for visual verification */}
+                  {imageThumbnailUrl && onImageClick && (
+                    <button
+                      onClick={onImageClick}
+                      className="flex-shrink-0 relative group rounded-lg overflow-hidden focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      aria-label="View image to verify bold formatting"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={imageThumbnailUrl}
+                        alt="Label image for verification"
+                        className="h-16 w-16 object-cover border border-blue-200 dark:border-blue-700 rounded-lg transition-transform duration-150 group-hover:scale-105"
+                      />
+                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors duration-150 rounded-lg flex items-center justify-center">
+                        <Eye className="h-4 w-4 text-white opacity-0 group-hover:opacity-100 transition-opacity duration-150 drop-shadow-lg" />
+                      </div>
+                    </button>
+                  )}
+                  
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Eye className="h-4 w-4 text-blue-600 dark:text-blue-400" aria-hidden="true" />
+                      <span className="text-sm font-medium text-blue-800 dark:text-blue-200">
+                        Manual Verification Required
+                      </span>
+                    </div>
+                    <p className="text-xs text-blue-700 dark:text-blue-300">
+                      {warningResult.boldStatus === 'not_detected' 
+                        ? 'AI did not detect bold formatting on "GOVERNMENT WARNING:". Please verify visually that the text appears bold on the label.'
+                        : 'Please visually confirm that "GOVERNMENT WARNING:" appears in bold text on the label.'
+                      }
+                    </p>
+                    {imageThumbnailUrl && onImageClick && (
+                      <button
+                        onClick={onImageClick}
+                        className="mt-2 text-xs text-blue-600 dark:text-blue-400 hover:underline font-medium inline-flex items-center gap-1"
+                      >
+                        <Eye className="h-3 w-3" />
+                        View full image
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Formatting reason if provided */}
+            {warningResult.formattingReason && (
+              <p className="text-sm text-amber-700 dark:text-amber-300 bg-amber-100/50 dark:bg-amber-900/20 rounded-md px-3 py-2">
+                ⚠️ {warningResult.formattingReason}
+              </p>
+            )}
+
             {/* Reason / explanation */}
-            {warningResult.reason && (
+            {warningResult.reason && !warningResult.formattingReason && (
               <p className="text-sm text-zinc-600 dark:text-zinc-400 italic">
                 {warningResult.reason}
               </p>
@@ -441,6 +624,16 @@ export function ResultsDetails({
     setModalIndex(index);
   }, []);
 
+  /**
+   * Handle warning block image click - opens first image
+   */
+  const handleWarningImageClick = useCallback(() => {
+    handleImageClick(0);
+  }, [handleImageClick]);
+
+  // Get the first image thumbnail for the warning block
+  const firstImageUrl = imagePreviewUrls.length > 0 ? imagePreviewUrls[0] : undefined;
+
   return (
     <>
       <Card>
@@ -451,7 +644,11 @@ export function ResultsDetails({
         </CardHeader>
         <CardContent className="space-y-4">
           {/* Government Warning block - pinned at top, most prominent */}
-          <WarningBlock warningResult={result.warningResult} />
+          <WarningBlock 
+            warningResult={result.warningResult}
+            imageThumbnailUrl={firstImageUrl}
+            onImageClick={firstImageUrl ? handleWarningImageClick : undefined}
+          />
 
           {/* Source image thumbnails with click-to-preview */}
           <ImageThumbnails
