@@ -3,7 +3,6 @@ import {
   FileCheck, 
   Layers, 
   AlertTriangle, 
-  ImageOff, 
   Eye,
   Upload,
   ArrowRight,
@@ -12,7 +11,10 @@ import {
   XCircle,
   FolderOpen,
   Scissors,
-  Edit3
+  Edit3,
+  Download,
+  FileText,
+  Sparkles
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui';
 
@@ -79,64 +81,111 @@ export default function HelpPage() {
         </CardContent>
       </Card>
 
-      {/* Single vs Batch Mode */}
+      {/* Verification Workflow */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Layers className="h-5 w-5 text-blue-600 dark:text-blue-500" aria-hidden="true" />
-            Single vs Batch Mode
+            Verification Workflow
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-6 text-sm">
-          {/* Single Mode */}
+          <p className="text-zinc-600 dark:text-zinc-400">
+            LabelVerify uses a unified workflow that handles both single and multiple applications seamlessly.
+            Simply upload your images and the app takes care of the rest.
+          </p>
+
+          {/* Step 1: Upload */}
           <div>
             <h4 className="font-medium text-zinc-900 dark:text-zinc-100 mb-3 flex items-center gap-2">
               <span className="inline-flex items-center justify-center h-6 w-6 rounded-full bg-blue-100 text-blue-700 text-xs font-semibold dark:bg-blue-900 dark:text-blue-300">
                 1
               </span>
-              Single Mode
+              Upload Images
             </h4>
             <div className="ml-8 space-y-3 text-zinc-600 dark:text-zinc-400">
               <p>
-                Use Single mode when verifying <strong>one application</strong> at a time. 
-                All uploaded images are treated as belonging to the same label (e.g., front and back panels).
+                Upload one or more label images. You can upload images for a single application 
+                (e.g., front and back of one label) or multiple applications at once.
               </p>
               <div className="flex items-center gap-3 text-xs">
                 <span className="flex items-center gap-1.5 rounded bg-zinc-100 px-2 py-1 dark:bg-zinc-800">
                   <Upload className="h-3.5 w-3.5" aria-hidden="true" />
-                  Upload images
+                  Select files
                 </span>
-                <ArrowRight className="h-3.5 w-3.5 text-zinc-400" aria-hidden="true" />
+                <span className="text-zinc-400">or</span>
                 <span className="flex items-center gap-1.5 rounded bg-zinc-100 px-2 py-1 dark:bg-zinc-800">
-                  <Edit3 className="h-3.5 w-3.5" aria-hidden="true" />
-                  Enter application values (optional)
-                </span>
-                <ArrowRight className="h-3.5 w-3.5 text-zinc-400" aria-hidden="true" />
-                <span className="flex items-center gap-1.5 rounded bg-emerald-100 px-2 py-1 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300">
-                  <FileCheck className="h-3.5 w-3.5" aria-hidden="true" />
-                  Run Verification
+                  Drag & drop
                 </span>
               </div>
             </div>
           </div>
 
-          {/* Batch Mode */}
+          {/* Step 2: Auto-Grouping */}
           <div>
             <h4 className="font-medium text-zinc-900 dark:text-zinc-100 mb-3 flex items-center gap-2">
               <span className="inline-flex items-center justify-center h-6 w-6 rounded-full bg-blue-100 text-blue-700 text-xs font-semibold dark:bg-blue-900 dark:text-blue-300">
                 2
               </span>
-              Batch Mode
+              Automatic Grouping
             </h4>
             <div className="ml-8 space-y-3 text-zinc-600 dark:text-zinc-400">
               <p>
-                Use Batch mode to verify <strong>multiple applications</strong> at once. 
-                Upload all images and the app will automatically group them by filename when possible.
+                Images are automatically grouped into applications based on filename patterns.
+                For example, <code className="bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded text-xs">bourbon_front.jpg</code> and{' '}
+                <code className="bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded text-xs">bourbon_back.jpg</code> will be grouped together.
               </p>
               <p>
-                Results appear progressively as each application completes. You can filter results 
-                by status (Pass, Fail, Needs Review) and drill into details while processing continues.
+                You can manually adjust groups before running verification using the grouping tools.
               </p>
+            </div>
+          </div>
+
+          {/* Step 3: Optional Values */}
+          <div>
+            <h4 className="font-medium text-zinc-900 dark:text-zinc-100 mb-3 flex items-center gap-2">
+              <span className="inline-flex items-center justify-center h-6 w-6 rounded-full bg-blue-100 text-blue-700 text-xs font-semibold dark:bg-blue-900 dark:text-blue-300">
+                3
+              </span>
+              Enter Application Values (Optional)
+            </h4>
+            <div className="ml-8 space-y-3 text-zinc-600 dark:text-zinc-400">
+              <p>
+                Optionally enter expected application values (brand name, class type, etc.) to compare 
+                against the extracted data. This helps catch discrepancies between application forms and labels.
+              </p>
+            </div>
+          </div>
+
+          {/* Step 4: Run Verification */}
+          <div>
+            <h4 className="font-medium text-zinc-900 dark:text-zinc-100 mb-3 flex items-center gap-2">
+              <span className="inline-flex items-center justify-center h-6 w-6 rounded-full bg-emerald-100 text-emerald-700 text-xs font-semibold dark:bg-emerald-900 dark:text-emerald-300">
+                4
+              </span>
+              Run Verification
+            </h4>
+            <div className="ml-8 space-y-3 text-zinc-600 dark:text-zinc-400">
+              <p>
+                Click &quot;Run Verification&quot; to start the process. Results appear progressively as 
+                each application completes. You can filter by status and drill into details while 
+                processing continues.
+              </p>
+              <div className="flex items-center gap-3 text-xs">
+                <span className="flex items-center gap-1.5 rounded bg-emerald-100 px-2 py-1 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300">
+                  <FileCheck className="h-3.5 w-3.5" aria-hidden="true" />
+                  Run Verification
+                </span>
+                <ArrowRight className="h-3.5 w-3.5 text-zinc-400" aria-hidden="true" />
+                <span className="flex items-center gap-1.5 rounded bg-zinc-100 px-2 py-1 dark:bg-zinc-800">
+                  View Results
+                </span>
+                <ArrowRight className="h-3.5 w-3.5 text-zinc-400" aria-hidden="true" />
+                <span className="flex items-center gap-1.5 rounded bg-blue-100 px-2 py-1 text-blue-700 dark:bg-blue-900 dark:text-blue-300">
+                  <Download className="h-3.5 w-3.5" aria-hidden="true" />
+                  Download PDF
+                </span>
+              </div>
             </div>
           </div>
         </CardContent>
@@ -147,12 +196,13 @@ export default function HelpPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <FolderOpen className="h-5 w-5 text-amber-600 dark:text-amber-500" aria-hidden="true" />
-            Image Grouping Guidance
+            Image Grouping
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4 text-sm text-zinc-600 dark:text-zinc-400">
           <p>
-            In Batch mode, images with similar filenames are automatically grouped into applications.
+            Images with similar filenames are automatically grouped into applications.
+            You can always adjust groups manually before running verification.
           </p>
           
           <div className="rounded-lg border border-zinc-200 dark:border-zinc-700 divide-y divide-zinc-200 dark:divide-zinc-700">
@@ -214,6 +264,60 @@ export default function HelpPage() {
         </CardContent>
       </Card>
 
+      {/* Reports & Export */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <FileText className="h-5 w-5 text-blue-600 dark:text-blue-500" aria-hidden="true" />
+            Reports & Export
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4 text-sm text-zinc-600 dark:text-zinc-400">
+          <p>
+            Verification results are automatically saved as reports. Each application gets its own 
+            report, identified by the brand name extracted from the label.
+          </p>
+          
+          <div className="rounded-lg border border-zinc-200 dark:border-zinc-700 divide-y divide-zinc-200 dark:divide-zinc-700">
+            {/* Report Storage */}
+            <div className="p-4">
+              <h4 className="font-medium text-zinc-900 dark:text-zinc-100 mb-2 flex items-center gap-2">
+                <HelpCircle className="h-4 w-4 text-blue-500" aria-hidden="true" />
+                Report Storage
+              </h4>
+              <p>
+                Reports are saved in your browser&apos;s local storage along with image thumbnails for reference.
+                View past reports from the Reports page to review verification history.
+              </p>
+            </div>
+
+            {/* PDF Export */}
+            <div className="p-4">
+              <h4 className="font-medium text-zinc-900 dark:text-zinc-100 mb-2 flex items-center gap-2">
+                <Download className="h-4 w-4 text-emerald-500" aria-hidden="true" />
+                PDF Export
+              </h4>
+              <p>
+                Download any report as a styled PDF document for sharing or archival. The PDF includes 
+                all verification details, field comparisons, and source image thumbnails.
+              </p>
+            </div>
+
+            {/* JSON Export */}
+            <div className="p-4">
+              <h4 className="font-medium text-zinc-900 dark:text-zinc-100 mb-2 flex items-center gap-2">
+                <FileCheck className="h-4 w-4 text-zinc-500" aria-hidden="true" />
+                JSON Export
+              </h4>
+              <p>
+                For technical use cases, you can also download reports as JSON files containing 
+                the complete structured data.
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Limitations */}
       <Card>
         <CardHeader>
@@ -224,31 +328,34 @@ export default function HelpPage() {
         </CardHeader>
         <CardContent>
           <ul className="space-y-4 text-sm">
-            {/* Images Not Stored */}
-            <li className="flex items-start gap-3">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-rose-100 dark:bg-rose-900/50">
-                <ImageOff className="h-4 w-4 text-rose-600 dark:text-rose-400" aria-hidden="true" />
-              </div>
-              <div>
-                <h4 className="font-medium text-zinc-900 dark:text-zinc-100">Images Are Not Stored</h4>
-                <p className="mt-1 text-zinc-600 dark:text-zinc-400">
-                  Uploaded images are processed transiently and are not saved. Reports contain extracted 
-                  data only. To re-verify a label, you must re-upload the images.
-                </p>
-              </div>
-            </li>
-
-            {/* Bold Manual Confirm */}
+            {/* Bold Detection */}
             <li className="flex items-start gap-3">
               <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/50">
-                <Eye className="h-4 w-4 text-amber-600 dark:text-amber-400" aria-hidden="true" />
+                <Sparkles className="h-4 w-4 text-amber-600 dark:text-amber-400" aria-hidden="true" />
               </div>
               <div>
-                <h4 className="font-medium text-zinc-900 dark:text-zinc-100">Bold Text Requires Manual Confirmation</h4>
+                <h4 className="font-medium text-zinc-900 dark:text-zinc-100">Bold Text Detection</h4>
                 <p className="mt-1 text-zinc-600 dark:text-zinc-400">
                   The Government Warning statement must have &quot;GOVERNMENT WARNING:&quot; in bold. 
-                  OCR cannot reliably detect bold formatting, so this must be visually confirmed by the reviewer. 
-                  The app will mark this as &quot;Manual confirm&quot; in results.
+                  LabelVerify uses AI vision to detect bold formatting and will show:
+                </p>
+                <ul className="mt-2 ml-4 space-y-1 text-zinc-600 dark:text-zinc-400">
+                  <li className="flex items-center gap-2">
+                    <CheckCircle className="h-3.5 w-3.5 text-emerald-500" aria-hidden="true" />
+                    <span><strong>&quot;Likely Bold&quot;</strong> when AI detects bold formatting</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <AlertTriangle className="h-3.5 w-3.5 text-amber-500" aria-hidden="true" />
+                    <span><strong>&quot;Possibly Not Bold&quot;</strong> when AI doesn&apos;t detect bold</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <Eye className="h-3.5 w-3.5 text-blue-500" aria-hidden="true" />
+                    <span><strong>&quot;Manual Confirm&quot;</strong> when AI can&apos;t determine</span>
+                  </li>
+                </ul>
+                <p className="mt-2 text-zinc-600 dark:text-zinc-400">
+                  When manual confirmation is needed, a visual verification prompt will appear with 
+                  an image thumbnail for quick reference.
                 </p>
               </div>
             </li>
@@ -262,7 +369,7 @@ export default function HelpPage() {
                 <h4 className="font-medium text-zinc-900 dark:text-zinc-100">Strict Government Warning Validation</h4>
                 <p className="mt-1 text-zinc-600 dark:text-zinc-400">
                   The Government Health Warning statement is validated word-for-word against the canonical 
-                  required wording. Any deviation (except whitespace) will cause a Fail status.
+                  required wording. Any deviation (except whitespace and accents) will cause a Fail status.
                 </p>
               </div>
             </li>
@@ -291,7 +398,7 @@ export default function HelpPage() {
                 <p className="mt-1 text-zinc-600 dark:text-zinc-400">
                   Reports are saved in your browser&apos;s local storage. They are not synced across 
                   devices or browsers. Clearing browser data will delete all saved reports. 
-                  Download reports as JSON to preserve them.
+                  Download reports as PDF or JSON to preserve them.
                 </p>
               </div>
             </li>
@@ -319,11 +426,15 @@ export default function HelpPage() {
             </li>
             <li className="flex items-start gap-2">
               <CheckCircle className="h-4 w-4 mt-0.5 shrink-0 text-emerald-500" aria-hidden="true" />
-              <span>Name files descriptively (e.g., &quot;bourbon_front.jpg&quot;) for better auto-grouping in Batch mode.</span>
+              <span>Name files descriptively (e.g., &quot;bourbon_front.jpg&quot;) for better auto-grouping.</span>
             </li>
             <li className="flex items-start gap-2">
               <CheckCircle className="h-4 w-4 mt-0.5 shrink-0 text-emerald-500" aria-hidden="true" />
-              <span>Download reports as JSON for permanent records since local storage can be cleared.</span>
+              <span>Download reports as PDF for professional documentation or JSON for data preservation.</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <CheckCircle className="h-4 w-4 mt-0.5 shrink-0 text-emerald-500" aria-hidden="true" />
+              <span>When bold status shows &quot;Manual Confirm&quot;, click the image thumbnail to visually verify the warning text formatting.</span>
             </li>
           </ul>
         </CardContent>
