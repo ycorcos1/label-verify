@@ -1,12 +1,26 @@
 /**
- * Validation schemas for LabelVerify
+ * Validation schemas and engines for LabelVerify
  *
  * Zod schemas for:
  * - OpenAI extraction response (strict JSON)
  * - Report serialization (for local persistence)
+ *
+ * Validation engine for:
+ * - Government warning strict validation
+ * - Field comparisons (text and numeric)
+ * - Application result computation
  */
 
 import { z } from 'zod';
+
+// Re-export validation engine functions
+export {
+  validateGovernmentWarning,
+  compareTextField,
+  compareNumericField,
+  computeApplicationResult,
+  computeErrorResult,
+} from './validators';
 
 // ============================================================================
 // OpenAI Extraction Response Schema
