@@ -1,14 +1,14 @@
 'use client';
 
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui';
-import { SingleVerifyView } from '@/components/verify/SingleVerifyView';
 import { BatchVerifyView } from '@/components/verify/BatchVerifyView';
 
 /**
- * Verify page with Single/Batch mode toggle.
+ * Unified Verify page for label verification.
  * 
- * - Single mode: verify one application comprised of one or more images
- * - Batch mode: upload many images, auto-group into applications, process progressively
+ * Supports uploading images for one or more applications with:
+ * - Automatic grouping by filename (e.g., "ProductName_front.jpg" and "ProductName_back.jpg")
+ * - Manual grouping via selection and "Group Selected" button
+ * - Single-image applications work seamlessly without requiring grouping
  */
 export default function VerifyPage() {
   return (
@@ -20,26 +20,13 @@ export default function VerifyPage() {
             Verify Labels
           </h1>
           <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-            Upload label images to verify compliance with regulatory requirements.
+            Upload label images to verify compliance. Images are automatically grouped by product name when possible.
           </p>
         </div>
       </div>
 
-      {/* Mode toggle tabs */}
-      <Tabs defaultValue="single" className="w-full">
-        <TabsList>
-          <TabsTrigger value="single">Single</TabsTrigger>
-          <TabsTrigger value="batch">Batch</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="single" className="mt-6">
-          <SingleVerifyView />
-        </TabsContent>
-
-        <TabsContent value="batch" className="mt-6">
-          <BatchVerifyView />
-        </TabsContent>
-      </Tabs>
+      {/* Unified verification flow */}
+      <BatchVerifyView />
     </div>
   );
 }
