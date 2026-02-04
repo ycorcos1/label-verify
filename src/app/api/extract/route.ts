@@ -84,6 +84,9 @@ Required JSON schema:
   "bottlerProducer": string | null,
   "countryOfOrigin": string | null,
   "governmentWarning": string | null,
+  "governmentWarningIsBold": boolean | null,
+  "governmentWarningFontSize": "normal" | "small" | "very_small" | null,
+  "governmentWarningVisibility": "prominent" | "moderate" | "subtle" | null,
   "confidence": number,
   "notes": string
 }
@@ -96,6 +99,17 @@ Field definitions:
 - bottlerProducer: Producer/bottler name and address if visible
 - countryOfOrigin: Country of origin if stated (e.g., "Product of USA", "Made in Scotland")
 - governmentWarning: The FULL government health warning statement if present. Copy it EXACTLY as written, preserving all wording.
+- governmentWarningIsBold: Observe whether "GOVERNMENT WARNING:" appears to be in BOLD (heavier weight/thicker strokes than surrounding text). true = clearly bold, false = clearly not bold, null = uncertain
+- governmentWarningFontSize: Observe the relative font size of the warning compared to other label text:
+  - "normal" = similar size to other important label text
+  - "small" = noticeably smaller than main label text
+  - "very_small" = very small, hard to read, appears to minimize visibility
+  - null = cannot determine
+- governmentWarningVisibility: Overall visibility/prominence of the warning on the label:
+  - "prominent" = easily visible, stands out, good contrast
+  - "moderate" = visible but not emphasized
+  - "subtle" = hard to notice, low contrast, hidden in background
+  - null = cannot determine
 - confidence: Your confidence level from 0 to 1 (e.g., 0.9 for clear image, 0.5 for blurry)
 - notes: Any relevant observations about image quality, partial visibility, or extraction uncertainty
 
@@ -105,6 +119,13 @@ CRITICAL for governmentWarning:
 - Preserve exact capitalization and punctuation
 - If warning spans multiple lines, combine into single string with spaces
 - Return null only if no warning is visible
+
+IMPORTANT for formatting observations (governmentWarningIsBold, governmentWarningFontSize, governmentWarningVisibility):
+- These help verify regulatory compliance for warning visibility
+- Look carefully at the visual appearance, not just the text content
+- Bold text has thicker strokes than regular text
+- Compare the warning size to other text on the label
+- Consider contrast, placement, and overall prominence
 
 Return null for any field that is not visible or readable in the image.`;
 
