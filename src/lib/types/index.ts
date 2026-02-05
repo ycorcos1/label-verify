@@ -113,6 +113,11 @@ export interface ExtractedValues extends ApplicationValues {
 // ============================================================================
 
 /**
+ * Manual field verification decision by user
+ */
+export type ManualFieldVerification = 'pass' | 'fail' | null;
+
+/**
  * Result of validating a single field
  */
 export interface FieldResult {
@@ -130,6 +135,12 @@ export interface FieldResult {
   sourceImageIndices?: number[];
   /** Alternative candidates if multiple values were found */
   candidates?: string[];
+  /** User's manual verification decision (when status was needs_review) */
+  manualVerification?: ManualFieldVerification;
+  /** Whether the extracted value was manually edited */
+  extractedEdited?: boolean;
+  /** Whether the expected value was manually edited */
+  expectedEdited?: boolean;
 }
 
 /**

@@ -138,14 +138,14 @@ test('compareTextField - missing extracted value', () => {
   assertEqual(result.status, FieldStatus.Missing, 'status');
 });
 
-test('compareTextField - label-only mode (no expected)', () => {
+test('compareTextField - label-only mode (no expected) passes', () => {
   const result = compareTextField("Extracted Value", undefined);
-  assertEqual(result.status, FieldStatus.NotProvided, 'status');
+  assertEqual(result.status, FieldStatus.Pass, 'status');
 });
 
-test('compareTextField - both missing', () => {
+test('compareTextField - both missing passes (no expected)', () => {
   const result = compareTextField(undefined, undefined);
-  assertEqual(result.status, FieldStatus.Missing, 'status');
+  assertEqual(result.status, FieldStatus.Pass, 'status');
 });
 
 test('compareTextField - partial match needs review', () => {
@@ -209,9 +209,9 @@ test('compareNumericField - different net contents fails', () => {
   assertEqual(result.status, FieldStatus.Fail, 'status');
 });
 
-test('compareNumericField - label-only mode', () => {
+test('compareNumericField - label-only mode passes', () => {
   const result = compareNumericField("40%", undefined, 'abv');
-  assertEqual(result.status, FieldStatus.NotProvided, 'status');
+  assertEqual(result.status, FieldStatus.Pass, 'status');
 });
 
 // ============================================================================

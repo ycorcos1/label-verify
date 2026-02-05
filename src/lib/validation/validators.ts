@@ -272,17 +272,14 @@ export function compareTextField(
   extracted: string | undefined,
   expected: string | undefined
 ): TextComparisonResult {
-  // No expected value provided - label-only mode
+  // No expected value provided - label-only mode = always pass
   if (expected === undefined || expected.trim() === '') {
-    if (extracted === undefined || extracted.trim() === '') {
-      return { status: FieldStatus.Missing, reason: 'Value not found on label' };
-    }
-    return { status: FieldStatus.NotProvided, reason: 'Application value not provided' };
+    return { status: FieldStatus.Pass };
   }
 
-  // No extracted value
+  // No extracted value but expected value exists
   if (extracted === undefined || extracted.trim() === '') {
-    return { status: FieldStatus.Missing, reason: 'Value not found on label' };
+    return { status: FieldStatus.NeedsReview, reason: 'Value not found on label' };
   }
 
   const trimmedExtracted = extracted.trim();
@@ -324,7 +321,17 @@ export function compareTextField(
   // Use accent-normalized versions for more robust matching
   if (noAccentExtracted.includes(noAccentExpected) || 
       noAccentExpected.includes(noAccentExtracted)) {
-    // One is a substring of the other
+    
+    // If expected value is fully contained in extracted value, this is a PASS
+    // Example: Expected "Italy" is contained in "Product of Italy" - the required value IS present
+    // Example: Expected "IT-CN/9217" is contained in "Bottled by IT-CN/9217 - Distributed by..." 
+    if (noAccentExtracted.includes(noAccentExpected)) {
+      // Expected is contained in extracted - the label has what was expected (plus more context)
+      return { status: FieldStatus.Pass };
+    }
+    
+    // If extracted is contained in expected, the label has less info than expected
+    // This needs review as the label may be missing required details
     const shorter = noAccentExtracted.length < noAccentExpected.length 
       ? noAccentExtracted 
       : noAccentExpected;
@@ -464,17 +471,14 @@ export function compareNumericField(
   expected: string | undefined,
   fieldType: 'abv' | 'netContents'
 ): TextComparisonResult {
-  // No expected value provided - label-only mode
+  // No expected value provided - label-only mode = always pass
   if (expected === undefined || expected.trim() === '') {
-    if (extracted === undefined || extracted.trim() === '') {
-      return { status: FieldStatus.Missing, reason: 'Value not found on label' };
-    }
-    return { status: FieldStatus.NotProvided, reason: 'Application value not provided' };
+    return { status: FieldStatus.Pass };
   }
 
-  // No extracted value
+  // No extracted value but expected value exists
   if (extracted === undefined || extracted.trim() === '') {
-    return { status: FieldStatus.Missing, reason: 'Value not found on label' };
+    return { status: FieldStatus.NeedsReview, reason: 'Value not found on label' };
   }
 
   const parsedExtracted = parseNumericValue(extracted);
@@ -647,17 +651,37 @@ function validateField(
       result.sourceImageIndices = [provenance.sourceIndex];
     }
     
-    // If provenance indicates conflict, upgrade to NeedsReview if not already failing
-    if (provenance.needsReview) {
-      if (result.status === FieldStatus.Pass) {
+    // If provenance indicates conflict, check if expected value matches any candidate
+    // Only apply conflict logic if there IS an expected value to compare
+    if (provenance.needsReview && expectedValue && expectedValue.trim() !== '') {
+      // Check if expected value matches one of the conflicting candidates
+      // If so, the conflict is resolved - the expected value IS on the label
+      const expectedMatchesCandidate = provenance.conflictingCandidates?.some(candidate => {
+        const normalizedCandidate = normalizeForComparison(candidate);
+        const normalizedExpected = normalizeForComparison(expectedValue);
+        return normalizedCandidate === normalizedExpected || 
+               normalizedCandidate.includes(normalizedExpected) ||
+               normalizedExpected.includes(normalizedCandidate);
+      });
+      
+      // Only mark as NeedsReview if expected doesn't match any candidate
+      if (result.status === FieldStatus.Pass && !expectedMatchesCandidate) {
         result.status = FieldStatus.NeedsReview;
         result.reason = provenance.reviewReason || 'Conflicting values found in images';
       }
+      
+      // Include candidates for informational purposes
       if (provenance.conflictingCandidates) {
         result.candidates = provenance.conflictingCandidates;
       }
       if (provenance.conflictingSourceIndices) {
         result.sourceImageIndices = provenance.conflictingSourceIndices;
+      }
+    } else if (provenance.needsReview) {
+      // No expected value, but still show candidates for informational purposes
+      // Status remains Pass since there's nothing to compare against
+      if (provenance.conflictingCandidates) {
+        result.candidates = provenance.conflictingCandidates;
       }
     }
   }

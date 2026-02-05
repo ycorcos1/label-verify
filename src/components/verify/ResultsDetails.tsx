@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useCallback } from 'react';
-import { AlertTriangle, ChevronDown, ChevronUp, Eye, Shield, CheckCircle2, XCircle } from 'lucide-react';
+import { useState, useCallback, useRef, useEffect } from 'react';
+import { AlertTriangle, ChevronDown, ChevronUp, Eye, Shield, CheckCircle2, XCircle, Pencil, Save, X } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, Button, StatusBadge, ImagePreviewModal } from '@/components/ui';
 import type {
   ApplicationResult,
@@ -13,6 +13,7 @@ import type {
   GovernmentWarningFontSize,
   GovernmentWarningVisibility,
   ManualBoldVerification,
+  ManualFieldVerification,
 } from '@/lib/types';
 
 // ============================================================================
@@ -34,6 +35,10 @@ export interface ResultsDetailsProps {
   onImagePreview?: (imageIndex: number) => void;
   /** Callback when user manually verifies bold formatting */
   onManualBoldVerification?: (decision: ManualBoldVerification) => void;
+  /** Callback when user manually verifies a field */
+  onManualFieldVerification?: (fieldIndex: number, decision: ManualFieldVerification) => void;
+  /** Callback when user edits a field value */
+  onFieldEdit?: (fieldIndex: number, editType: 'extracted' | 'expected', newValue: string) => void;
   /** Whether manual verification is in progress (for loading state) */
   isManualVerificationLoading?: boolean;
 }
@@ -43,36 +48,42 @@ export interface ResultsDetailsProps {
 // ============================================================================
 
 /**
- * Maps FieldStatus to StatusBadge status type
+ * Maps FieldStatus to StatusBadge status type for field comparison display
+ * Note: For field comparison, we only show 'pass' or 'needs_review' - 
+ * fail/missing are shown as needs_review, not_provided is shown as pass
  */
 function mapFieldStatusToStatusType(status: FieldStatus): 'pass' | 'fail' | 'needs_review' | 'missing' | 'not_provided' {
   switch (status) {
     case 'pass':
+    case 'not_provided':
+      // not_provided means no expected value = pass
       return 'pass';
     case 'fail':
-      return 'fail';
+    case 'missing':
+      // For field comparison, fail/missing should show as needs_review
+      return 'needs_review';
     case 'needs_review':
       return 'needs_review';
-    case 'missing':
-      return 'missing';
-    case 'not_provided':
-      return 'not_provided';
     default:
-      return 'missing';
+      return 'needs_review';
   }
 }
 
 /**
  * Gets a row background color based on status
+ * Note: For field comparison, fail/missing use amber (needs_review) styling
+ * not_provided uses pass (emerald) styling
  */
 function getStatusRowClass(status: FieldStatus): string {
   switch (status) {
     case 'pass':
+    case 'not_provided':
+      // not_provided means no expected value = pass styling
       return 'bg-emerald-50/50 dark:bg-emerald-950/20';
     case 'fail':
     case 'missing':
-      return 'bg-red-50/50 dark:bg-red-950/20';
     case 'needs_review':
+      // All non-pass statuses show as needs_review (amber)
       return 'bg-amber-50/50 dark:bg-amber-950/20';
     default:
       return '';
@@ -304,22 +315,20 @@ function WarningBlock({
             {/* Sub-status checks with flex-wrap for natural wrapping */}
             {hasWarning && (
               <div className="flex flex-wrap gap-2">
-                {/* Wording check */}
-                <div className="flex items-center gap-2 text-sm rounded-md bg-white/40 dark:bg-black/10 px-2.5 py-1.5">
+                {/* Wording check - icon indicates status */}
+                <div className="flex items-center gap-1.5 text-sm rounded-md bg-white/40 dark:bg-black/10 px-2.5 py-1.5">
                   {getWarningIcon(warningResult.wordingStatus)}
                   <span className="text-zinc-600 dark:text-zinc-300">Wording</span>
-                  <StatusBadge status={wordingStatusType} size="sm" />
                 </div>
                 
-                {/* Uppercase check */}
-                <div className="flex items-center gap-2 text-sm rounded-md bg-white/40 dark:bg-black/10 px-2.5 py-1.5">
+                {/* Uppercase check - icon indicates status */}
+                <div className="flex items-center gap-1.5 text-sm rounded-md bg-white/40 dark:bg-black/10 px-2.5 py-1.5">
                   {getWarningIcon(warningResult.uppercaseStatus)}
                   <span className="text-zinc-600 dark:text-zinc-300">Uppercase</span>
-                  <StatusBadge status={uppercaseStatusType} size="sm" />
                 </div>
                 
                 {/* Bold check - enhanced with detection status */}
-                <div className={`flex items-center gap-2 text-sm rounded-md ${boldDisplay.bgClass} px-2.5 py-1.5`}>
+                <div className={`flex items-center gap-1.5 text-sm rounded-md ${boldDisplay.bgClass} px-2.5 py-1.5`}>
                   {boldDisplay.icon}
                   <span className="text-zinc-600 dark:text-zinc-300">Bold</span>
                   <span className={`text-xs font-medium ${boldDisplay.textClass} bg-white/30 dark:bg-black/20 px-1.5 py-0.5 rounded`}>
@@ -488,13 +497,21 @@ function WarningBlock({
 
 interface FieldComparisonRowProps {
   field: FieldResult;
+  fieldIndex: number;
+  onManualVerification?: (fieldIndex: number, decision: ManualFieldVerification) => void;
+  onFieldEdit?: (fieldIndex: number, editType: 'extracted' | 'expected', newValue: string) => void;
+  isLoading?: boolean;
 }
 
 /**
  * A single field comparison row
  */
-function FieldComparisonRow({ field }: FieldComparisonRowProps) {
+function FieldComparisonRow({ field, fieldIndex, onManualVerification, onFieldEdit, isLoading }: FieldComparisonRowProps) {
   const [expanded, setExpanded] = useState(false);
+  const [editingField, setEditingField] = useState<'extracted' | 'expected' | null>(null);
+  const [editValue, setEditValue] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+  
   const statusType = mapFieldStatusToStatusType(field.status);
   const rowBgClass = getStatusRowClass(field.status);
 
@@ -503,6 +520,43 @@ function FieldComparisonRow({ field }: FieldComparisonRowProps) {
   const isLongExtracted = extractedText.length > 80;
   const isLongExpected = expectedText.length > 80;
   const hasLongContent = isLongExtracted || isLongExpected;
+  
+  // Allow editing for fail, needs_review, or missing status
+  const canEdit = onFieldEdit && (field.status === 'fail' || field.status === 'needs_review' || field.status === 'missing');
+  
+  // Focus input when editing starts
+  useEffect(() => {
+    if (editingField && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [editingField]);
+  
+  const handleStartEdit = (type: 'extracted' | 'expected') => {
+    setEditingField(type);
+    setEditValue(type === 'extracted' ? (field.extractedValue || '') : (field.expectedValue || ''));
+  };
+  
+  const handleCancelEdit = () => {
+    setEditingField(null);
+    setEditValue('');
+  };
+  
+  const handleSaveEdit = () => {
+    if (editingField && onFieldEdit) {
+      onFieldEdit(fieldIndex, editingField, editValue);
+      setEditingField(null);
+      setEditValue('');
+    }
+  };
+  
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleSaveEdit();
+    } else if (e.key === 'Escape') {
+      handleCancelEdit();
+    }
+  };
 
   return (
     <div
@@ -522,27 +576,117 @@ function FieldComparisonRow({ field }: FieldComparisonRowProps) {
           <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
             {/* Extracted value */}
             <div>
-              <span className="text-xs text-zinc-500 dark:text-zinc-400 block mb-0.5">
-                Extracted
-              </span>
-              <span className="text-zinc-900 dark:text-zinc-100">
-                {expanded || !isLongExtracted ? extractedText : truncateText(extractedText, 80)}
-              </span>
+              <div className="flex items-center gap-1 mb-0.5">
+                <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                  Extracted
+                </span>
+                {field.extractedEdited && (
+                  <span className="text-xs text-blue-500 dark:text-blue-400">(edited)</span>
+                )}
+                {canEdit && editingField !== 'extracted' && (
+                  <button
+                    onClick={() => handleStartEdit('extracted')}
+                    disabled={isLoading}
+                    className="ml-1 p-0.5 text-zinc-400 hover:text-blue-600 dark:hover:text-blue-400 disabled:opacity-50"
+                    title="Edit extracted value"
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
+              {editingField === 'extracted' ? (
+                <div className="flex items-center gap-1">
+                  <input
+                    ref={inputRef}
+                    type="text"
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    disabled={isLoading}
+                    className="flex-1 px-2 py-1 text-sm border border-blue-300 dark:border-blue-600 rounded bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <button
+                    onClick={handleSaveEdit}
+                    disabled={isLoading}
+                    className="p-1 text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300 disabled:opacity-50"
+                    title="Save"
+                  >
+                    <Save className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={handleCancelEdit}
+                    disabled={isLoading}
+                    className="p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 disabled:opacity-50"
+                    title="Cancel"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              ) : (
+                <span className="text-zinc-900 dark:text-zinc-100">
+                  {expanded || !isLongExtracted ? extractedText : truncateText(extractedText, 80)}
+                </span>
+              )}
             </div>
 
             {/* Expected value */}
             <div>
-              <span className="text-xs text-zinc-500 dark:text-zinc-400 block mb-0.5">
-                Expected
-              </span>
-              <span className="text-zinc-900 dark:text-zinc-100">
-                {expanded || !isLongExpected ? expectedText : truncateText(expectedText, 80)}
-              </span>
+              <div className="flex items-center gap-1 mb-0.5">
+                <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                  Expected
+                </span>
+                {field.expectedEdited && (
+                  <span className="text-xs text-blue-500 dark:text-blue-400">(edited)</span>
+                )}
+                {canEdit && editingField !== 'expected' && (
+                  <button
+                    onClick={() => handleStartEdit('expected')}
+                    disabled={isLoading}
+                    className="ml-1 p-0.5 text-zinc-400 hover:text-blue-600 dark:hover:text-blue-400 disabled:opacity-50"
+                    title="Edit expected value"
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
+              {editingField === 'expected' ? (
+                <div className="flex items-center gap-1">
+                  <input
+                    ref={inputRef}
+                    type="text"
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    disabled={isLoading}
+                    className="flex-1 px-2 py-1 text-sm border border-blue-300 dark:border-blue-600 rounded bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <button
+                    onClick={handleSaveEdit}
+                    disabled={isLoading}
+                    className="p-1 text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300 disabled:opacity-50"
+                    title="Save"
+                  >
+                    <Save className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={handleCancelEdit}
+                    disabled={isLoading}
+                    className="p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 disabled:opacity-50"
+                    title="Cancel"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              ) : (
+                <span className="text-zinc-900 dark:text-zinc-100">
+                  {expanded || !isLongExpected ? expectedText : truncateText(expectedText, 80)}
+                </span>
+              )}
             </div>
           </div>
 
           {/* Expand button for long content */}
-          {hasLongContent && (
+          {hasLongContent && !editingField && (
             <button
               onClick={() => setExpanded(!expanded)}
               className="text-blue-600 dark:text-blue-400 hover:underline text-xs flex items-center gap-1 self-start"
@@ -578,6 +722,60 @@ function FieldComparisonRow({ field }: FieldComparisonRowProps) {
                 </li>
               ))}
             </ul>
+          </div>
+        )}
+        
+        {/* Manual verification buttons for needs_review fields (that haven't been manually verified yet) */}
+        {field.status === 'needs_review' && !field.manualVerification && onManualVerification && (
+          <div className="mt-3 pt-3 border-t border-amber-200 dark:border-amber-700/50">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs text-amber-600 dark:text-amber-400">
+                Is this field correct?
+              </span>
+              <button
+                onClick={() => onManualVerification(fieldIndex, 'pass')}
+                disabled={isLoading}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-200 dark:hover:bg-emerald-900/60 focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                Yes, Correct
+              </button>
+              <button
+                onClick={() => onManualVerification(fieldIndex, 'fail')}
+                disabled={isLoading}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-900/60 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                <XCircle className="h-3.5 w-3.5" />
+                No, Incorrect
+              </button>
+            </div>
+          </div>
+        )}
+        
+        {/* Show manual verification result if already verified */}
+        {field.manualVerification && (
+          <div className={`mt-2 rounded-md px-3 py-2 ${
+            field.manualVerification === 'pass'
+              ? 'bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800'
+              : 'bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800'
+          }`}>
+            <div className="flex items-center gap-2">
+              {field.manualVerification === 'pass' ? (
+                <>
+                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                  <span className="text-xs font-medium text-emerald-700 dark:text-emerald-300">
+                    Manually verified as correct
+                  </span>
+                </>
+              ) : (
+                <>
+                  <XCircle className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />
+                  <span className="text-xs font-medium text-red-700 dark:text-red-300">
+                    Manually verified as incorrect
+                  </span>
+                </>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -662,6 +860,8 @@ export function ResultsDetails({
   showImagePreviewModal = true,
   onImagePreview,
   onManualBoldVerification,
+  onManualFieldVerification,
+  onFieldEdit,
   isManualVerificationLoading,
 }: ResultsDetailsProps) {
   // Internal modal state
@@ -744,7 +944,14 @@ export function ResultsDetails({
             </div>
             <div className="divide-y divide-zinc-200 dark:divide-zinc-700">
               {result.fieldResults.map((field, index) => (
-                <FieldComparisonRow key={index} field={field} />
+                <FieldComparisonRow 
+                  key={index} 
+                  field={field} 
+                  fieldIndex={index}
+                  onManualVerification={onManualFieldVerification}
+                  onFieldEdit={onFieldEdit}
+                  isLoading={isManualVerificationLoading}
+                />
               ))}
             </div>
           </div>

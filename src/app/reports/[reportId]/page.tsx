@@ -15,7 +15,7 @@ import {
   Info,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, Button, StatusBadge, LoadingState } from '@/components/ui';
-import type { Report, ManualBoldVerification, FieldStatus } from '@/lib/types';
+import type { Report, ManualBoldVerification, ManualFieldVerification, FieldStatus, FieldResult, WarningResult, OverallStatus } from '@/lib/types';
 import { ResultsDetails } from '@/components/verify/ResultsDetails';
 import {
   getReport,
@@ -25,6 +25,7 @@ import {
   formatDuration,
   getBrandName,
 } from '@/lib/utils';
+import { compareTextField, compareNumericField } from '@/lib/validation';
 import { useRouter } from 'next/navigation';
 import { pdf } from '@react-pdf/renderer';
 import { ReportPDF } from '@/components/pdf';
@@ -56,6 +57,102 @@ function mapOverallStatusToStatusType(
   return 'needs_review';
 }
 
+/**
+ * Helper to get the effective status of a field (considering manual verification)
+ */
+function getEffectiveFieldStatus(field: FieldResult): FieldStatus {
+  if (field.manualVerification === 'pass') return 'pass' as FieldStatus;
+  if (field.manualVerification === 'fail') return 'fail' as FieldStatus;
+  return field.status;
+}
+
+/**
+ * Helper to get the effective status of the warning (considering manual bold verification)
+ */
+function getEffectiveWarningStatus(warning: WarningResult): FieldStatus {
+  // If bold was manually verified, use that to determine warning status
+  if (warning.manualBoldVerification === 'pass') {
+    // Bold is confirmed - check if wording and uppercase also pass
+    if (warning.wordingStatus === ('pass' as FieldStatus) && 
+        warning.uppercaseStatus === ('pass' as FieldStatus)) {
+      return 'pass' as FieldStatus;
+    }
+  }
+  if (warning.manualBoldVerification === 'fail') {
+    return 'fail' as FieldStatus;
+  }
+  return warning.overallStatus;
+}
+
+/**
+ * Recalculates the overall application status based on all fields and warning
+ * - Government warning wording/uppercase fail → Fail
+ * - Field comparisons with conflicts → Needs Review
+ * - Bold detection uncertain → Needs Review
+ */
+function recalculateOverallStatus(
+  fieldResults: FieldResult[],
+  warningResult: WarningResult
+): { overallStatus: OverallStatus; topReasons: string[] } {
+  const reasons: string[] = [];
+  let hasNeedsReview = false;
+  let hasFail = false;
+  
+  // Check each field's effective status
+  // not_provided is treated as pass (no expected value = no comparison needed)
+  for (const field of fieldResults) {
+    const effectiveStatus = getEffectiveFieldStatus(field);
+    
+    if (effectiveStatus === ('pass' as FieldStatus) || effectiveStatus === ('not_provided' as FieldStatus)) {
+      // Pass - no action needed
+    } else if (effectiveStatus === ('needs_review' as FieldStatus)) {
+      hasNeedsReview = true;
+      reasons.push(`${field.fieldName}: ${field.reason || 'Needs review'}`);
+    } else {
+      // For field comparisons, treat fail/missing as needs_review
+      hasNeedsReview = true;
+      reasons.push(`${field.fieldName}: ${field.reason || 'Needs review'}`);
+    }
+  }
+  
+  // Check warning's effective status - this CAN cause a Fail
+  const effectiveWarningStatus = getEffectiveWarningStatus(warningResult);
+  
+  if (effectiveWarningStatus === ('pass' as FieldStatus)) {
+    // Pass - no action needed
+  } else if (effectiveWarningStatus === ('fail' as FieldStatus)) {
+    // Government warning wording/uppercase failure = Fail
+    hasFail = true;
+    reasons.unshift(`Government Warning: ${warningResult.reason || 'Failed validation'}`);
+  } else if (effectiveWarningStatus === ('missing' as FieldStatus)) {
+    // Missing government warning = Fail
+    hasFail = true;
+    reasons.unshift('Government Warning: Not found on label');
+  } else {
+    // needs_review (e.g., bold detection uncertain)
+    hasNeedsReview = true;
+    reasons.unshift(`Government Warning: ${warningResult.reason || 'Needs review'}`);
+  }
+  
+  // Determine overall status
+  let overallStatus: OverallStatus;
+  if (hasFail) {
+    overallStatus = 'fail';
+  } else if (hasNeedsReview) {
+    overallStatus = 'needs_review';
+  } else {
+    overallStatus = 'pass';
+  }
+  
+  // Top reasons (max 3)
+  const topReasons = reasons.slice(0, 3);
+  if (topReasons.length === 0 && overallStatus === 'pass') {
+    topReasons.push('All validated fields match');
+  }
+  
+  return { overallStatus, topReasons };
+}
+
 // ============================================================================
 // Sub-Components
 // ============================================================================
@@ -65,16 +162,69 @@ interface SummaryStatsProps {
 }
 
 /**
+ * Calculate field-level status counts from application result
+ * Uses effective status (considering manual verifications and edits)
+ * - Field comparisons: fail/missing → needsReview (display only)
+ * - Government warning: fail → fail (actual failure)
+ */
+function calculateFieldCounts(report: Report): { pass: number; fail: number; needsReview: number } {
+  // Get the first application's result (this is a single application report view)
+  const application = report.applications?.[0];
+  const appResult = application?.result;
+  
+  if (!appResult) {
+    return { pass: 0, fail: 0, needsReview: 0 };
+  }
+
+  let pass = 0;
+  let fail = 0;
+  let needsReview = 0;
+
+  // Count field results - for fields, treat fail/missing as needsReview, not_provided as pass
+  for (const field of appResult.fieldResults || []) {
+    const effectiveStatus = getEffectiveFieldStatus(field);
+    if (effectiveStatus === ('pass' as FieldStatus) || effectiveStatus === ('not_provided' as FieldStatus)) {
+      pass++;
+    } else {
+      // All non-pass field statuses count as needsReview (not fail)
+      needsReview++;
+    }
+  }
+
+  // Count warning result - this CAN be a fail
+  if (appResult.warningResult) {
+    const effectiveWarningStatus = getEffectiveWarningStatus(appResult.warningResult);
+    if (effectiveWarningStatus === ('pass' as FieldStatus)) {
+      pass++;
+    } else if (effectiveWarningStatus === ('fail' as FieldStatus) || effectiveWarningStatus === ('missing' as FieldStatus)) {
+      // Government warning wording/uppercase failure = actual fail
+      fail++;
+    } else {
+      // needs_review (e.g., bold detection uncertain)
+      needsReview++;
+    }
+  }
+
+  return { pass, fail, needsReview };
+}
+
+/**
  * Summary statistics bar for the report
+ * Shows field-level counts (not application-level)
+ * - Pass: all passes including fields with no expected value
+ * - Fail: government warning wording/uppercase failures
+ * - Review: field conflicts, bold detection uncertain
  */
 function SummaryStats({ report }: SummaryStatsProps) {
+  const counts = calculateFieldCounts(report);
+  
   return (
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
       <div className="flex items-center gap-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 px-3 py-2">
         <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
         <div>
           <p className="text-lg font-semibold text-emerald-700 dark:text-emerald-300">
-            {report.summary.pass}
+            {counts.pass}
           </p>
           <p className="text-xs text-emerald-600 dark:text-emerald-400">Pass</p>
         </div>
@@ -84,7 +234,7 @@ function SummaryStats({ report }: SummaryStatsProps) {
         <XCircle className="h-4 w-4 text-red-600 dark:text-red-400" aria-hidden="true" />
         <div>
           <p className="text-lg font-semibold text-red-700 dark:text-red-300">
-            {report.summary.fail}
+            {counts.fail}
           </p>
           <p className="text-xs text-red-600 dark:text-red-400">Fail</p>
         </div>
@@ -94,7 +244,7 @@ function SummaryStats({ report }: SummaryStatsProps) {
         <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" aria-hidden="true" />
         <div>
           <p className="text-lg font-semibold text-amber-700 dark:text-amber-300">
-            {report.summary.needsReview}
+            {counts.needsReview}
           </p>
           <p className="text-xs text-amber-600 dark:text-amber-400">Review</p>
         </div>
@@ -222,30 +372,27 @@ export default function ReportDetailPage({ params }: ReportDetailPageProps) {
       // Set the manual verification
       warningResult.manualBoldVerification = decision;
       
-      // Recalculate overall status based on manual decision
-      // If user says it's bold (pass), and wording/uppercase are pass, overall should be pass
-      // If user says it's not bold (fail), overall should be fail
+      // Update bold status display and warning reason
       if (decision === 'pass') {
-        // Bold is confirmed - check if everything else passes
+        warningResult.boldStatus = 'detected';
         if (warningResult.wordingStatus === ('pass' as FieldStatus) && 
             warningResult.uppercaseStatus === ('pass' as FieldStatus)) {
           warningResult.overallStatus = 'pass' as FieldStatus;
           warningResult.reason = 'Government warning matches all requirements (bold manually verified)';
-          result.overallStatus = 'pass';
-          result.topReasons = ['All validated fields match'];
         }
       } else if (decision === 'fail') {
-        // Bold is confirmed NOT present - fail
+        warningResult.boldStatus = 'not_detected';
         warningResult.overallStatus = 'fail' as FieldStatus;
         warningResult.reason = '"GOVERNMENT WARNING:" is not bold (manually verified)';
-        result.overallStatus = 'fail';
-        result.topReasons = ['Government Warning: "GOVERNMENT WARNING:" is not bold'];
       }
       
-      // Update bold status display
-      warningResult.boldStatus = decision === 'pass' ? 'detected' : 'not_detected';
-      
       result.warningResult = warningResult;
+      
+      // Recalculate overall status considering ALL fields and the warning
+      const { overallStatus, topReasons } = recalculateOverallStatus(result.fieldResults, warningResult);
+      result.overallStatus = overallStatus;
+      result.topReasons = topReasons;
+      
       app.result = result;
       updatedReport.applications[0] = app;
       
@@ -269,6 +416,196 @@ export default function ReportDetailPage({ params }: ReportDetailPageProps) {
     } catch (err) {
       console.error('Manual verification failed:', err);
       setError('Failed to save manual verification. Please try again.');
+    } finally {
+      setSavingManualVerification(false);
+    }
+  }, [report]);
+
+  /**
+   * Handle manual field verification
+   * Updates the report with the user's decision for a specific field
+   */
+  const handleManualFieldVerification = useCallback(async (fieldIndex: number, decision: ManualFieldVerification) => {
+    if (!report || !report.applications[0]) return;
+    
+    setSavingManualVerification(true);
+    setError(null);
+    
+    try {
+      // Create updated report with manual verification
+      const updatedReport = { ...report };
+      const app = { ...updatedReport.applications[0] };
+      const result = { ...app.result };
+      const fieldResults = [...result.fieldResults];
+      
+      // Update the specific field
+      const field = { ...fieldResults[fieldIndex] };
+      field.manualVerification = decision;
+      
+      // Update field status based on decision
+      if (decision === 'pass') {
+        field.status = 'pass' as FieldStatus;
+        field.reason = 'Manually verified as correct';
+      } else if (decision === 'fail') {
+        field.status = 'fail' as FieldStatus;
+        field.reason = 'Manually verified as incorrect';
+      }
+      
+      fieldResults[fieldIndex] = field;
+      result.fieldResults = fieldResults;
+      
+      // Recalculate overall status considering ALL fields and the warning
+      const { overallStatus, topReasons } = recalculateOverallStatus(fieldResults, result.warningResult);
+      result.overallStatus = overallStatus;
+      result.topReasons = topReasons;
+      
+      app.result = result;
+      updatedReport.applications[0] = app;
+      
+      // Update summary counts
+      updatedReport.summary = {
+        total: 1,
+        pass: result.overallStatus === 'pass' ? 1 : 0,
+        fail: result.overallStatus === 'fail' ? 1 : 0,
+        needsReview: result.overallStatus === 'needs_review' ? 1 : 0,
+        error: result.overallStatus === 'error' ? 1 : 0,
+      };
+      
+      // Save to IndexedDB
+      const saveResult = await updateReport(updatedReport);
+      
+      if (saveResult.success) {
+        setReport(updatedReport);
+      } else {
+        setError(`Failed to save verification: ${saveResult.error.message}`);
+      }
+    } catch (err) {
+      console.error('Manual field verification failed:', err);
+      setError('Failed to save manual verification. Please try again.');
+    } finally {
+      setSavingManualVerification(false);
+    }
+  }, [report]);
+
+  /**
+   * Handle field value edit
+   * Re-runs comparison with the new value and updates status
+   */
+  const handleFieldEdit = useCallback(async (
+    fieldIndex: number, 
+    editType: 'extracted' | 'expected', 
+    newValue: string
+  ) => {
+    if (!report || !report.applications[0]) return;
+    
+    setSavingManualVerification(true);
+    setError(null);
+    
+    try {
+      // Create updated report
+      const updatedReport = { ...report };
+      const app = { ...updatedReport.applications[0] };
+      const result = { ...app.result };
+      const fieldResults = [...result.fieldResults];
+      
+      // Get the field and update the value
+      const field = { ...fieldResults[fieldIndex] };
+      
+      if (editType === 'extracted') {
+        field.extractedValue = newValue || undefined;
+        field.extractedEdited = true;
+      } else {
+        field.expectedValue = newValue || undefined;
+        field.expectedEdited = true;
+      }
+      
+      // Re-run comparison based on field type
+      const extractedVal = field.extractedValue;
+      const expectedVal = field.expectedValue;
+      
+      // Determine which comparison to use based on field name
+      let comparisonResult;
+      if (field.fieldName === 'ABV/Proof') {
+        comparisonResult = compareNumericField(extractedVal, expectedVal, 'abv');
+      } else if (field.fieldName === 'Net Contents') {
+        comparisonResult = compareNumericField(extractedVal, expectedVal, 'netContents');
+      } else {
+        comparisonResult = compareTextField(extractedVal, expectedVal);
+      }
+      
+      // Update field with new comparison result
+      field.status = comparisonResult.status;
+      field.reason = comparisonResult.reason || (comparisonResult.status === 'pass' ? 'Values match (after edit)' : undefined);
+      field.manualVerification = undefined; // Clear manual verification since we re-compared
+      
+      fieldResults[fieldIndex] = field;
+      result.fieldResults = fieldResults;
+      
+      // Also update the extractedValues in the application if extracted was edited
+      if (editType === 'extracted') {
+        const extractedValues = { ...app.extractedValues };
+        // Map field name to extractedValues key
+        const fieldNameMap: Record<string, keyof typeof extractedValues> = {
+          'Brand Name': 'brand',
+          'Class/Type': 'classType',
+          'ABV/Proof': 'abvOrProof',
+          'Net Contents': 'netContents',
+          'Producer/Bottler': 'producer',
+          'Country of Origin': 'country',
+        };
+        const key = fieldNameMap[field.fieldName];
+        if (key) {
+          (extractedValues as Record<string, string | undefined>)[key] = newValue || undefined;
+        }
+        app.extractedValues = extractedValues;
+      }
+      
+      // Update applicationValues if expected was edited
+      if (editType === 'expected') {
+        const applicationValues = { ...app.applicationValues };
+        const fieldNameMap: Record<string, keyof typeof applicationValues> = {
+          'Brand Name': 'brand',
+          'Class/Type': 'classType',
+          'ABV/Proof': 'abvOrProof',
+          'Net Contents': 'netContents',
+          'Producer/Bottler': 'producer',
+          'Country of Origin': 'country',
+        };
+        const key = fieldNameMap[field.fieldName];
+        if (key) {
+          (applicationValues as Record<string, string | undefined>)[key] = newValue || undefined;
+        }
+        app.applicationValues = applicationValues;
+      }
+      
+      // Recalculate overall status
+      const { overallStatus, topReasons } = recalculateOverallStatus(fieldResults, result.warningResult);
+      result.overallStatus = overallStatus;
+      result.topReasons = topReasons;
+      
+      app.result = result;
+      updatedReport.applications[0] = app;
+      
+      // Update summary counts
+      updatedReport.summary = {
+        total: 1,
+        pass: result.overallStatus === 'pass' ? 1 : 0,
+        fail: result.overallStatus === 'fail' ? 1 : 0,
+        needsReview: result.overallStatus === 'needs_review' ? 1 : 0,
+        error: result.overallStatus === 'error' ? 1 : 0,
+      };
+      
+      // Save to IndexedDB
+      const saveResult = await updateReport(updatedReport);
+      
+      if (saveResult.success) {
+        setReport(updatedReport);
+      } else {
+        setError(`Failed to save edit: ${saveResult.error.message}`);
+      }
+    } catch (err) {
+      console.error('Field edit failed:', err);
+      setError('Failed to save field edit. Please try again.');
     } finally {
       setSavingManualVerification(false);
     }
@@ -466,6 +803,8 @@ export default function ReportDetailPage({ params }: ReportDetailPageProps) {
               imageAltTexts={report.applications[0].imageNames || []}
               showImagePreviewModal={report.applications[0].imageThumbnails && report.applications[0].imageThumbnails.length > 0}
               onManualBoldVerification={handleManualBoldVerification}
+              onManualFieldVerification={handleManualFieldVerification}
+              onFieldEdit={handleFieldEdit}
               isManualVerificationLoading={savingManualVerification}
             />
           )}

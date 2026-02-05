@@ -102,7 +102,8 @@ export default function ReportsPage() {
    * Get the primary status for a report (for badge display)
    */
   const getPrimaryStatus = (summary: ReportListItem['summary']): 'pass' | 'fail' | 'needs_review' | 'error' => {
-    if (summary.fail > 0 || summary.error > 0) return 'fail';
+    if (summary.error > 0) return 'error';
+    if (summary.fail > 0) return 'fail';
     if (summary.needsReview > 0) return 'needs_review';
     if (summary.pass > 0) return 'pass';
     return 'needs_review';
