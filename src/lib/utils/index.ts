@@ -284,9 +284,9 @@ export function formatDate(isoString: string): string {
 
 /**
  * Common suffixes to remove for grouping (front, back, label, etc.)
- * Matches patterns like: _front, -front, _back, -back, _label, -label, etc.
+ * Matches patterns like: _front, -front, _back, -back, _label, -label, (front), (back), etc.
  */
-const PANEL_SUFFIX_PATTERN = /[_\-\s]*(front|back|label|other|side|left|right|top|bottom|detail|close|closeup|close-up)\s*\d*$/i;
+const PANEL_SUFFIX_PATTERN = /[_\-\s]*\(?(front|back|label|other|side|left|right|top|bottom|detail|close|closeup|close-up)\)?\s*\d*$/i;
 
 /**
  * Patterns that indicate a non-descriptive filename (should not be auto-grouped)
