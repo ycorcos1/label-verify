@@ -15,11 +15,12 @@ import {
   Info,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, Button, StatusBadge, LoadingState } from '@/components/ui';
-import type { Report } from '@/lib/types';
+import type { Report, ManualBoldVerification, FieldStatus } from '@/lib/types';
 import { ResultsDetails } from '@/components/verify/ResultsDetails';
 import {
   getReport,
   deleteReport,
+  updateReport,
   formatDate,
   formatDuration,
   getBrandName,
@@ -127,6 +128,7 @@ export default function ReportDetailPage({ params }: ReportDetailPageProps) {
   const [deleting, setDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [generatingPdf, setGeneratingPdf] = useState(false);
+  const [savingManualVerification, setSavingManualVerification] = useState(false);
 
   /**
    * Load the report from IndexedDB
@@ -199,6 +201,78 @@ export default function ReportDetailPage({ params }: ReportDetailPageProps) {
       setShowDeleteConfirm(false);
     }
   }, [report, router]);
+
+  /**
+   * Handle manual bold verification
+   * Updates the report with the user's decision and recalculates overall status
+   */
+  const handleManualBoldVerification = useCallback(async (decision: ManualBoldVerification) => {
+    if (!report || !report.applications[0]) return;
+    
+    setSavingManualVerification(true);
+    setError(null);
+    
+    try {
+      // Create updated report with manual verification
+      const updatedReport = { ...report };
+      const app = { ...updatedReport.applications[0] };
+      const result = { ...app.result };
+      const warningResult = { ...result.warningResult };
+      
+      // Set the manual verification
+      warningResult.manualBoldVerification = decision;
+      
+      // Recalculate overall status based on manual decision
+      // If user says it's bold (pass), and wording/uppercase are pass, overall should be pass
+      // If user says it's not bold (fail), overall should be fail
+      if (decision === 'pass') {
+        // Bold is confirmed - check if everything else passes
+        if (warningResult.wordingStatus === ('pass' as FieldStatus) && 
+            warningResult.uppercaseStatus === ('pass' as FieldStatus)) {
+          warningResult.overallStatus = 'pass' as FieldStatus;
+          warningResult.reason = 'Government warning matches all requirements (bold manually verified)';
+          result.overallStatus = 'pass';
+          result.topReasons = ['All validated fields match'];
+        }
+      } else if (decision === 'fail') {
+        // Bold is confirmed NOT present - fail
+        warningResult.overallStatus = 'fail' as FieldStatus;
+        warningResult.reason = '"GOVERNMENT WARNING:" is not bold (manually verified)';
+        result.overallStatus = 'fail';
+        result.topReasons = ['Government Warning: "GOVERNMENT WARNING:" is not bold'];
+      }
+      
+      // Update bold status display
+      warningResult.boldStatus = decision === 'pass' ? 'detected' : 'not_detected';
+      
+      result.warningResult = warningResult;
+      app.result = result;
+      updatedReport.applications[0] = app;
+      
+      // Update summary counts
+      updatedReport.summary = {
+        total: 1,
+        pass: result.overallStatus === 'pass' ? 1 : 0,
+        fail: result.overallStatus === 'fail' ? 1 : 0,
+        needsReview: result.overallStatus === 'needs_review' ? 1 : 0,
+        error: result.overallStatus === 'error' ? 1 : 0,
+      };
+      
+      // Save to IndexedDB
+      const saveResult = await updateReport(updatedReport);
+      
+      if (saveResult.success) {
+        setReport(updatedReport);
+      } else {
+        setError(`Failed to save verification: ${saveResult.error.message}`);
+      }
+    } catch (err) {
+      console.error('Manual verification failed:', err);
+      setError('Failed to save manual verification. Please try again.');
+    } finally {
+      setSavingManualVerification(false);
+    }
+  }, [report]);
 
   // Loading state
   if (loading) {
@@ -391,6 +465,8 @@ export default function ReportDetailPage({ params }: ReportDetailPageProps) {
               imagePreviewUrls={report.applications[0].imageThumbnails || []}
               imageAltTexts={report.applications[0].imageNames || []}
               showImagePreviewModal={report.applications[0].imageThumbnails && report.applications[0].imageThumbnails.length > 0}
+              onManualBoldVerification={handleManualBoldVerification}
+              isManualVerificationLoading={savingManualVerification}
             />
           )}
         </CardContent>

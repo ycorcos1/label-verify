@@ -12,6 +12,7 @@ import type {
   BoldStatus,
   GovernmentWarningFontSize,
   GovernmentWarningVisibility,
+  ManualBoldVerification,
 } from '@/lib/types';
 
 // ============================================================================
@@ -31,6 +32,10 @@ export interface ResultsDetailsProps {
   showImagePreviewModal?: boolean;
   /** External callback when an image is clicked (used when parent manages modal) */
   onImagePreview?: (imageIndex: number) => void;
+  /** Callback when user manually verifies bold formatting */
+  onManualBoldVerification?: (decision: ManualBoldVerification) => void;
+  /** Whether manual verification is in progress (for loading state) */
+  isManualVerificationLoading?: boolean;
 }
 
 // ============================================================================
@@ -93,6 +98,10 @@ interface WarningBlockProps {
   imageThumbnailUrl?: string;
   /** Callback when thumbnail is clicked */
   onImageClick?: () => void;
+  /** Callback when user manually verifies bold formatting */
+  onManualBoldVerification?: (decision: ManualBoldVerification) => void;
+  /** Whether manual verification is in progress */
+  isManualVerificationLoading?: boolean;
 }
 
 // ============================================================================
@@ -193,7 +202,13 @@ function getWarningIcon(status: FieldStatus) {
  * This is the most prominent validation result, displayed with
  * enhanced visual styling to draw attention and make reviews fast.
  */
-function WarningBlock({ warningResult, imageThumbnailUrl, onImageClick }: WarningBlockProps) {
+function WarningBlock({ 
+  warningResult, 
+  imageThumbnailUrl, 
+  onImageClick,
+  onManualBoldVerification,
+  isManualVerificationLoading,
+}: WarningBlockProps) {
   const [expanded, setExpanded] = useState(false);
   const hasWarning = !!warningResult.extractedWarning;
   const warningText = warningResult.extractedWarning || 'Not found on label';
@@ -205,7 +220,11 @@ function WarningBlock({ warningResult, imageThumbnailUrl, onImageClick }: Warnin
 
   // Get bold status display configuration
   const boldDisplay = getBoldStatusDisplay(warningResult.boldStatus);
-  const needsManualBoldCheck = warningResult.boldStatus === 'manual_confirm' || warningResult.boldStatus === 'not_detected';
+  
+  // Check if manual verification is needed (and not already done)
+  const hasManualVerification = warningResult.manualBoldVerification !== undefined && warningResult.manualBoldVerification !== null;
+  const needsManualBoldCheck = !hasManualVerification && 
+    (warningResult.boldStatus === 'manual_confirm' || warningResult.boldStatus === 'not_detected');
 
   // Get formatting observations for display
   const fontSizeLabel = getFontSizeLabel(warningResult.observedFontSize);
@@ -343,7 +362,7 @@ function WarningBlock({ warningResult, imageThumbnailUrl, onImageClick }: Warnin
               </div>
             )}
 
-            {/* Manual verification prompt with image thumbnail */}
+            {/* Manual verification prompt with image thumbnail and action buttons */}
             {hasWarning && needsManualBoldCheck && (
               <div className="rounded-md border-2 border-dashed border-blue-300 dark:border-blue-700 bg-blue-50/50 dark:bg-blue-950/20 p-3">
                 <div className="flex items-start gap-3">
@@ -373,22 +392,76 @@ function WarningBlock({ warningResult, imageThumbnailUrl, onImageClick }: Warnin
                         Manual Verification Required
                       </span>
                     </div>
-                    <p className="text-xs text-blue-700 dark:text-blue-300">
+                    <p className="text-xs text-blue-700 dark:text-blue-300 mb-3">
                       {warningResult.boldStatus === 'not_detected' 
                         ? 'AI did not detect bold formatting on "GOVERNMENT WARNING:". Please verify visually that the text appears bold on the label.'
                         : 'Please visually confirm that "GOVERNMENT WARNING:" appears in bold text on the label.'
                       }
                     </p>
+                    
+                    {/* View full image link */}
                     {imageThumbnailUrl && onImageClick && (
                       <button
                         onClick={onImageClick}
-                        className="mt-2 text-xs text-blue-600 dark:text-blue-400 hover:underline font-medium inline-flex items-center gap-1"
+                        className="mb-3 text-xs text-blue-600 dark:text-blue-400 hover:underline font-medium inline-flex items-center gap-1"
                       >
                         <Eye className="h-3 w-3" />
                         View full image
                       </button>
                     )}
+                    
+                    {/* Manual verification buttons */}
+                    {onManualBoldVerification && (
+                      <div className="flex items-center gap-2 pt-2 border-t border-blue-200 dark:border-blue-700">
+                        <span className="text-xs text-blue-600 dark:text-blue-400 mr-2">
+                          Is the text bold?
+                        </span>
+                        <button
+                          onClick={() => onManualBoldVerification('pass')}
+                          disabled={isManualVerificationLoading}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-200 dark:hover:bg-emerald-900/60 focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                          Yes, it&apos;s Bold
+                        </button>
+                        <button
+                          onClick={() => onManualBoldVerification('fail')}
+                          disabled={isManualVerificationLoading}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-900/60 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                          <XCircle className="h-3.5 w-3.5" />
+                          No, Not Bold
+                        </button>
+                      </div>
+                    )}
                   </div>
+                </div>
+              </div>
+            )}
+            
+            {/* Show manual verification result if already verified */}
+            {hasWarning && hasManualVerification && (
+              <div className={`rounded-md border p-3 ${
+                warningResult.manualBoldVerification === 'pass'
+                  ? 'border-emerald-300 dark:border-emerald-700 bg-emerald-50/50 dark:bg-emerald-950/20'
+                  : 'border-red-300 dark:border-red-700 bg-red-50/50 dark:bg-red-950/20'
+              }`}>
+                <div className="flex items-center gap-2">
+                  {warningResult.manualBoldVerification === 'pass' ? (
+                    <>
+                      <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                      <span className="text-sm font-medium text-emerald-800 dark:text-emerald-200">
+                        Manually verified as bold
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <XCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
+                      <span className="text-sm font-medium text-red-800 dark:text-red-200">
+                        Manually verified as not bold
+                      </span>
+                    </>
+                  )}
                 </div>
               </div>
             )}
@@ -588,6 +661,8 @@ export function ResultsDetails({
   imageAltTexts = [],
   showImagePreviewModal = true,
   onImagePreview,
+  onManualBoldVerification,
+  isManualVerificationLoading,
 }: ResultsDetailsProps) {
   // Internal modal state
   const [modalOpen, setModalOpen] = useState(false);
@@ -648,6 +723,8 @@ export function ResultsDetails({
             warningResult={result.warningResult}
             imageThumbnailUrl={firstImageUrl}
             onImageClick={firstImageUrl ? handleWarningImageClick : undefined}
+            onManualBoldVerification={onManualBoldVerification}
+            isManualVerificationLoading={isManualVerificationLoading}
           />
 
           {/* Source image thumbnails with click-to-preview */}

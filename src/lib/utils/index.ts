@@ -34,6 +34,7 @@ export {
   saveApplicationsAsReports,
   listReports,
   getReport,
+  updateReport,
   deleteReport,
   clearAllReports,
   exportReportAsJson,

@@ -140,6 +140,11 @@ export interface FieldResult {
  */
 export type BoldStatus = 'detected' | 'not_detected' | 'manual_confirm';
 
+/**
+ * Manual bold verification decision by user
+ */
+export type ManualBoldVerification = 'pass' | 'fail' | null;
+
 export interface WarningResult {
   /** The extracted warning text */
   extractedWarning?: string;
@@ -155,6 +160,8 @@ export interface WarningResult {
   reason?: string;
   
   // Formatting observations from GPT-4 Vision (v2)
+  /** Whether the warning prefix appears in ALL CAPS (from visual observation) */
+  observedIsUppercase?: boolean | null;
   /** Whether the warning prefix appears bold (from visual observation) */
   observedIsBold?: boolean | null;
   /** Observed font size relative to other label text */
@@ -163,6 +170,10 @@ export interface WarningResult {
   observedVisibility?: GovernmentWarningVisibility | null;
   /** Reason for formatting-related status changes */
   formattingReason?: string;
+  
+  // Manual verification (user decision)
+  /** User's manual verification of bold formatting (pass = is bold, fail = not bold) */
+  manualBoldVerification?: ManualBoldVerification;
 }
 
 // ============================================================================
@@ -297,6 +308,8 @@ export interface ExtractionResponse {
   countryOfOrigin: string | null;
   /** Government warning statement */
   governmentWarning: string | null;
+  /** Whether "GOVERNMENT WARNING:" appears in ALL CAPS on the label (visual observation) */
+  governmentWarningIsUppercase?: boolean | null;
   /** Whether "GOVERNMENT WARNING:" appears bold (visual observation) */
   governmentWarningIsBold?: boolean | null;
   /** Relative font size of the warning text (visual observation) */

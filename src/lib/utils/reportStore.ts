@@ -377,6 +377,38 @@ export async function getReport(id: string): Promise<ReportStoreResult<Report>> 
 }
 
 /**
+ * Updates an existing report in IndexedDB
+ * @param report - The updated report object
+ * @returns The updated report or an error
+ */
+export async function updateReport(report: Report): Promise<ReportStoreResult<Report>> {
+  try {
+    const db = await openDatabase();
+
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const store = tx.objectStore(STORE_NAME);
+    
+    // Check if report exists first
+    const existing = await promisifyRequest(store.get(report.id));
+    if (!existing) {
+      db.close();
+      return {
+        success: false,
+        error: { code: 'NOT_FOUND', message: `Report with ID ${report.id} not found` },
+      };
+    }
+
+    // Update the report
+    await promisifyRequest(store.put(report));
+    db.close();
+
+    return { success: true, data: report };
+  } catch (error) {
+    return { success: false, error: mapError(error) };
+  }
+}
+
+/**
  * Deletes a report by ID
  * @param id - The report ID
  * @returns Success or an error

@@ -2,7 +2,6 @@
 
 # Project-specific ignores (not part of app)
 /docs
-/test data
 
 # dependencies
 /node_modules

@@ -48,6 +48,8 @@ const WARNING_PREFIX = "GOVERNMENT WARNING:";
  * Options for formatting observations from GPT-4 Vision
  */
 export interface FormattingObservations {
+  /** Whether the warning prefix appears in ALL CAPS */
+  isUppercase?: boolean | null;
   /** Whether the warning prefix appears bold */
   isBold?: boolean | null;
   /** Observed font size relative to other label text */
@@ -86,19 +88,32 @@ export function validateGovernmentWarning(
   const trimmedWarning = extractedWarning.trim();
   const normalizedExtracted = normalizeWhitespace(trimmedWarning).toLowerCase();
 
-  // Check uppercase prefix
+  // Check uppercase prefix using GPT-4 Vision observation (preferred) or text analysis (fallback)
   let uppercaseStatus: FieldStatus = FieldStatus.Fail;
   let uppercaseReason = '';
 
-  // Check if the warning contains "GOVERNMENT WARNING:" in uppercase
-  if (trimmedWarning.includes(WARNING_PREFIX)) {
+  // First, check if we have a visual observation from GPT-4 Vision
+  if (formattingObservations?.isUppercase === true) {
+    // GPT-4 Vision confirmed the header is in ALL CAPS
     uppercaseStatus = FieldStatus.Pass;
-  } else if (trimmedWarning.toUpperCase().includes(WARNING_PREFIX)) {
+  } else if (formattingObservations?.isUppercase === false) {
+    // GPT-4 Vision confirmed the header is NOT in all caps
     uppercaseStatus = FieldStatus.Fail;
-    uppercaseReason = '"GOVERNMENT WARNING:" is not in uppercase';
+    uppercaseReason = '"GOVERNMENT WARNING:" is not in uppercase on the label';
   } else {
-    uppercaseStatus = FieldStatus.Fail;
-    uppercaseReason = 'Missing "GOVERNMENT WARNING:" prefix';
+    // No visual observation available - fall back to text analysis
+    // Note: This is less reliable because text extraction may normalize case
+    if (trimmedWarning.includes(WARNING_PREFIX)) {
+      uppercaseStatus = FieldStatus.Pass;
+    } else if (trimmedWarning.toUpperCase().includes(WARNING_PREFIX)) {
+      // The text contains the warning but not in uppercase
+      // However, without visual confirmation, mark as needs review
+      uppercaseStatus = FieldStatus.NeedsReview;
+      uppercaseReason = 'Unable to confirm if "GOVERNMENT WARNING:" is uppercase - manual verification required';
+    } else {
+      uppercaseStatus = FieldStatus.Fail;
+      uppercaseReason = 'Missing "GOVERNMENT WARNING:" prefix';
+    }
   }
 
   // Check wording match
@@ -173,19 +188,23 @@ export function validateGovernmentWarning(
   let overallReason: string;
 
   // Determine if there are formatting concerns that should affect status
-  const hasFormattingFailure = boldStatus === 'not_detected';
+  // boldStatus: 'detected' = pass, 'not_detected' = needs review, 'manual_confirm' = needs review
+  // Since AI bold detection is unreliable, both uncertain and "not detected" trigger review (not fail)
+  const needsBoldReview = boldStatus === 'not_detected' || boldStatus === 'manual_confirm';
   const hasFormattingConcerns = formattingObservations && (
     formattingObservations.fontSize === 'very_small' ||
     formattingObservations.visibility === 'subtle'
   );
 
   if (wordingStatus === FieldStatus.Pass && uppercaseStatus === FieldStatus.Pass) {
-    if (hasFormattingFailure) {
-      // Wording and uppercase pass, but bold is not detected
+    if (needsBoldReview) {
+      // Wording and uppercase pass, but bold needs manual verification
       overallStatus = FieldStatus.NeedsReview;
-      overallReason = 'Warning text correct but "GOVERNMENT WARNING:" may not be bold';
+      overallReason = boldStatus === 'not_detected'
+        ? 'AI did not detect bold formatting - manual verification required'
+        : 'Unable to confirm if "GOVERNMENT WARNING:" is bold - manual verification required';
     } else if (hasFormattingConcerns) {
-      // Wording and uppercase pass, but there are visibility concerns
+      // Wording and uppercase pass, bold detected, but there are visibility concerns
       overallStatus = FieldStatus.NeedsReview;
       overallReason = formattingReason || 'Warning has formatting concerns';
     } else if (boldStatus === 'detected') {
@@ -193,9 +212,9 @@ export function validateGovernmentWarning(
       overallStatus = FieldStatus.Pass;
       overallReason = 'Government warning matches all requirements';
     } else {
-      // Wording and uppercase pass, bold needs manual confirmation
+      // Fallback - shouldn't reach here but handle gracefully
       overallStatus = FieldStatus.Pass;
-      overallReason = 'Government warning matches required text (bold requires manual confirmation)';
+      overallReason = 'Government warning matches required text';
     }
   } else if (wordingStatus === FieldStatus.Fail || uppercaseStatus === FieldStatus.Fail) {
     overallStatus = FieldStatus.Fail;
@@ -221,6 +240,7 @@ export function validateGovernmentWarning(
     overallStatus,
     reason: overallReason,
     // Include formatting observations in the result
+    observedIsUppercase: formattingObservations?.isUppercase,
     observedIsBold: formattingObservations?.isBold,
     observedFontSize: formattingObservations?.fontSize,
     observedVisibility: formattingObservations?.visibility,
@@ -714,6 +734,7 @@ export function computeApplicationResult(
   const warningResult = validateGovernmentWarning(
     extracted.governmentWarning,
     formattingObs ? {
+      isUppercase: formattingObs.isUppercase,
       isBold: formattingObs.isBold,
       fontSize: formattingObs.fontSize,
       visibility: formattingObs.visibility,

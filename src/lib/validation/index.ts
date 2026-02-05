@@ -50,6 +50,7 @@ export const ExtractionResponseSchema = z.object({
   countryOfOrigin: z.string().nullable(),
   governmentWarning: z.string().nullable(),
   // Formatting observation fields (v2)
+  governmentWarningIsUppercase: z.boolean().nullable().optional(),
   governmentWarningIsBold: z.boolean().nullable().optional(),
   governmentWarningFontSize: GovernmentWarningFontSizeSchema.nullable().optional(),
   governmentWarningVisibility: GovernmentWarningVisibilitySchema.nullable().optional(),
@@ -99,6 +100,7 @@ export const WarningResultSchema = z.object({
   overallStatus: FieldStatusSchema,
   reason: z.string().optional(),
   // Formatting observations from GPT-4 Vision (v2)
+  observedIsUppercase: z.boolean().nullable().optional(),
   observedIsBold: z.boolean().nullable().optional(),
   observedFontSize: GovernmentWarningFontSizeSchema.nullable().optional(),
   observedVisibility: GovernmentWarningVisibilitySchema.nullable().optional(),

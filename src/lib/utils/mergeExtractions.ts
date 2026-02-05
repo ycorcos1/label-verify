@@ -55,6 +55,8 @@ export interface FieldProvenance {
  * Aggregated formatting observations for government warning
  */
 export interface FormattingObservationsResult {
+  /** Whether the warning prefix appears in ALL CAPS (false if any image shows lowercase) */
+  isUppercase?: boolean | null;
   /** Whether the warning prefix appears bold (true if any image observed bold) */
   isBold?: boolean | null;
   /** Most conservative font size observation (smallest = worst case) */
@@ -306,6 +308,7 @@ const VISIBILITY_SEVERITY: Record<GovernmentWarningVisibility, number> = {
 /**
  * Aggregates formatting observations from multiple extractions.
  * Uses conservative aggregation:
+ * - isUppercase: false if ANY image shows lowercase (conservative - fail if any shows lowercase)
  * - isBold: true if ANY image shows bold (benefit of the doubt)
  * - fontSize: smallest/worst size observed (conservative)
  * - visibility: least visible observed (conservative)
@@ -314,6 +317,7 @@ function aggregateFormattingObservations(
   extractions: IndexedExtraction[]
 ): FormattingObservationsResult | undefined {
   const sourceImageIndices: number[] = [];
+  let aggregatedIsUppercase: boolean | null = null;
   let aggregatedIsBold: boolean | null = null;
   let aggregatedFontSize: GovernmentWarningFontSize | null = null;
   let aggregatedVisibility: GovernmentWarningVisibility | null = null;
@@ -321,10 +325,11 @@ function aggregateFormattingObservations(
   let hasAnyObservation = false;
   
   for (const { extraction, imageIndex } of extractions) {
-    const { governmentWarningIsBold, governmentWarningFontSize, governmentWarningVisibility } = extraction;
+    const { governmentWarningIsUppercase, governmentWarningIsBold, governmentWarningFontSize, governmentWarningVisibility } = extraction;
     
     // Track if this image contributed any observation
     const hasObservation = 
+      governmentWarningIsUppercase !== undefined && governmentWarningIsUppercase !== null ||
       governmentWarningIsBold !== undefined && governmentWarningIsBold !== null ||
       governmentWarningFontSize !== undefined && governmentWarningFontSize !== null ||
       governmentWarningVisibility !== undefined && governmentWarningVisibility !== null;
@@ -332,6 +337,14 @@ function aggregateFormattingObservations(
     if (hasObservation) {
       sourceImageIndices.push(imageIndex);
       hasAnyObservation = true;
+    }
+    
+    // Aggregate uppercase: false if ANY image shows lowercase (conservative approach)
+    // We want to catch non-uppercase labels, so if any image shows it's not uppercase, that's the result
+    if (governmentWarningIsUppercase === false) {
+      aggregatedIsUppercase = false;
+    } else if (governmentWarningIsUppercase === true && aggregatedIsUppercase !== false) {
+      aggregatedIsUppercase = true;
     }
     
     // Aggregate bold: true if ANY image shows bold
@@ -374,6 +387,7 @@ function aggregateFormattingObservations(
   }
   
   return {
+    isUppercase: aggregatedIsUppercase,
     isBold: aggregatedIsBold,
     fontSize: aggregatedFontSize,
     visibility: aggregatedVisibility,

@@ -105,11 +105,10 @@ function createErrorResponse(
 // OpenAI Prompt
 // ============================================================================
 
-const EXTRACTION_PROMPT = `You are an expert alcohol label analyzer. Analyze this label image and extract the following information.
+const EXTRACTION_PROMPT = `Analyze this alcohol label image and extract the information below.
 
-IMPORTANT: Return ONLY a valid JSON object with these exact fields. Do not include any other text, markdown formatting, or explanation.
+Return ONLY valid JSON with no markdown or explanation.
 
-Required JSON schema:
 {
   "brandName": string | null,
   "classType": string | null,
@@ -118,6 +117,7 @@ Required JSON schema:
   "bottlerProducer": string | null,
   "countryOfOrigin": string | null,
   "governmentWarning": string | null,
+  "governmentWarningIsUppercase": boolean | null,
   "governmentWarningIsBold": boolean | null,
   "governmentWarningFontSize": "normal" | "small" | "very_small" | null,
   "governmentWarningVisibility": "prominent" | "moderate" | "subtle" | null,
@@ -125,53 +125,56 @@ Required JSON schema:
   "notes": string
 }
 
-Field definitions:
-- brandName: The brand name of the alcoholic beverage (e.g., "Jack Daniel's", "Absolut")
-- classType: The class/type of beverage (e.g., "Tennessee Whiskey", "Vodka", "Cabernet Sauvignon")
-- alcoholContent: The alcohol content as shown (e.g., "40% ABV", "80 Proof", "12.5% Alc./Vol.")
-- netContents: The volume/size (e.g., "750ml", "1L", "1.75L")
-- bottlerProducer: Producer/bottler name and address if visible
-- countryOfOrigin: Country of origin if stated (e.g., "Product of USA", "Made in Scotland")
-- governmentWarning: The FULL government health warning statement if present. Copy it EXACTLY as written, preserving all wording.
-- governmentWarningIsBold: Observe whether "GOVERNMENT WARNING:" is in BOLD typeface (heavier weight/thicker strokes than surrounding text).
-  IMPORTANT: Bold means THICKER LETTER STROKES, not just uppercase or a different font style.
-  - Compare the stroke thickness of "GOVERNMENT WARNING:" to the text that follows it
-  - If ALL the warning text has the same stroke weight, it is NOT bold (return false)
-  - Only return true if "GOVERNMENT WARNING:" has visibly thicker/heavier strokes than the rest of the warning text
-  - Uppercase text is NOT the same as bold - uppercase just means capital letters
-  - true = clearly bold (thicker strokes), false = not bold (same weight as surrounding text), null = uncertain
-- governmentWarningFontSize: Observe the relative font size of the warning compared to other label text:
-  - "normal" = similar size to other important label text
-  - "small" = noticeably smaller than main label text
-  - "very_small" = very small, hard to read, appears to minimize visibility
-  - null = cannot determine
-- governmentWarningVisibility: Overall visibility/prominence of the warning on the label:
-  - "prominent" = easily visible, stands out, good contrast
-  - "moderate" = visible but not emphasized
-  - "subtle" = hard to notice, low contrast, hidden in background
-  - null = cannot determine
-- confidence: Your confidence level from 0 to 1 (e.g., 0.9 for clear image, 0.5 for blurry)
-- notes: Any relevant observations about image quality, partial visibility, or extraction uncertainty
+BASIC LABEL INFO:
+- brandName: Brand name (e.g., "Jack Daniel's")
+- classType: Beverage type (e.g., "Tennessee Whiskey", "Vodka")
+- alcoholContent: As shown (e.g., "40% ABV", "80 Proof")
+- netContents: Volume (e.g., "750ml", "1L")
+- bottlerProducer: Producer name and address if visible
+- countryOfOrigin: If stated (e.g., "Product of USA")
 
-CRITICAL for governmentWarning - READ CAREFULLY:
-- Look for text that says "GOVERNMENT WARNING:" followed by "(1) According to the Surgeon General..."
-- Your response MUST begin with "GOVERNMENT WARNING:" - this is MANDATORY
-- DO NOT start with "(1)" - you MUST include "GOVERNMENT WARNING:" before it
-- The correct format is: "GOVERNMENT WARNING: (1) According to the Surgeon General, women should not drink alcoholic beverages during pregnancy because of the risk of birth defects. (2) Consumption of alcoholic beverages impairs your ability to drive a car or operate machinery, and may cause health problems."
-- Copy the ENTIRE warning exactly as it appears, preserving all capitalization
-- If the label shows "GOVERNMENT WARNING:" in bold or different styling, still include it in the text
-- If warning spans multiple lines, combine into single string with spaces
-- Return null only if no warning text is visible at all
-- DOUBLE CHECK: Does your governmentWarning value start with "GOVERNMENT WARNING:"? If not, add it!
+GOVERNMENT WARNING (strict requirements):
+The government warning must meet these exact requirements to be compliant:
 
-IMPORTANT for formatting observations (governmentWarningIsBold, governmentWarningFontSize, governmentWarningVisibility):
-- These help verify regulatory compliance for warning visibility
-- Look carefully at the visual appearance, not just the text content
-- Bold text has thicker strokes than regular text
-- Compare the warning size to other text on the label
-- Consider contrast, placement, and overall prominence
+1. EXACT WORDING: The full text must be:
+   "GOVERNMENT WARNING: (1) According to the Surgeon General, women should not drink alcoholic beverages during pregnancy because of the risk of birth defects. (2) Consumption of alcoholic beverages impairs your ability to drive a car or operate machinery, and may cause health problems."
 
-Return null for any field that is not visible or readable in the image.`;
+2. governmentWarning: Extract the full warning text as written on the label.
+
+3. governmentWarningIsUppercase: VISUAL CHECK of the header "GOVERNMENT WARNING:"
+   - Look at how it appears ON THE LABEL
+   - TRUE = all letters are capitals (GOVERNMENT WARNING:)
+   - FALSE = any lowercase letters (Government Warning:, government warning:)
+
+4. governmentWarningIsBold: VISUAL CHECK - does "GOVERNMENT WARNING:" appear in bold?
+   - Bold text has THICKER/HEAVIER letter strokes (lines forming letters are fatter)
+   - Compare the header to the paragraph text that follows it
+   - TRUE = header clearly has thicker, heavier strokes than the body text
+   - FALSE = header clearly has the SAME thin stroke weight as body text (definitely NOT bold)
+   - NULL = uncertain, cannot determine with confidence
+   
+   VISUAL CUES FOR BOLD:
+   - Bold letters appear "darker" or "heavier" due to thicker strokes
+   - Bold text has less white space inside letters
+   - If the header visually "stands out" or looks emphasized, it's likely bold
+   
+   IMPORTANT: Only return FALSE if you are CERTAIN the header is NOT bold.
+   If there's ANY doubt, return NULL instead of FALSE.
+
+5. governmentWarningFontSize: Size relative to other label text
+   - "normal" = similar to other label text
+   - "small" = noticeably smaller
+   - "very_small" = hard to read
+
+6. governmentWarningVisibility: Overall prominence
+   - "prominent" = easily visible, good contrast
+   - "moderate" = visible but not emphasized
+   - "subtle" = hard to notice, low contrast
+
+- confidence: 0-1 based on image clarity
+- notes: Any observations about quality or visibility
+
+Return null for fields not visible in the image.`;
 
 // ============================================================================
 // Helper Functions
