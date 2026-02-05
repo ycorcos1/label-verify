@@ -48,13 +48,47 @@ interface ErrorResponse {
   };
 }
 
+/**
+ * Production logging for extraction errors
+ * Logs structured error information for debugging and monitoring
+ */
+function logExtractionError(
+  code: ErrorCode,
+  message: string,
+  details?: string,
+  context?: Record<string, unknown>
+): void {
+  const timestamp = new Date().toISOString();
+  const logEntry = {
+    timestamp,
+    level: 'error',
+    service: 'labelverify',
+    endpoint: '/api/extract',
+    error: {
+      code,
+      message,
+      details,
+    },
+    ...context,
+  };
+  
+  // In production, this logs as structured JSON for log aggregation tools
+  if (process.env.NODE_ENV === 'production') {
+    console.error(JSON.stringify(logEntry));
+  } else {
+    // In development, use human-readable format
+    console.error(`[${timestamp}] [/api/extract] Error: ${code} - ${message}`, details ? `Details: ${details}` : '');
+  }
+}
+
 function createErrorResponse(
   code: ErrorCode,
   message: string,
   status: number,
-  details?: string
+  details?: string,
+  context?: Record<string, unknown>
 ): NextResponse<ErrorResponse> {
-  console.error(`[/api/extract] Error: ${code} - ${message}`, details ? `Details: ${details}` : '');
+  logExtractionError(code, message, details, context);
   return NextResponse.json(
     {
       error: {
@@ -99,7 +133,13 @@ Field definitions:
 - bottlerProducer: Producer/bottler name and address if visible
 - countryOfOrigin: Country of origin if stated (e.g., "Product of USA", "Made in Scotland")
 - governmentWarning: The FULL government health warning statement if present. Copy it EXACTLY as written, preserving all wording.
-- governmentWarningIsBold: Observe whether "GOVERNMENT WARNING:" appears to be in BOLD (heavier weight/thicker strokes than surrounding text). true = clearly bold, false = clearly not bold, null = uncertain
+- governmentWarningIsBold: Observe whether "GOVERNMENT WARNING:" is in BOLD typeface (heavier weight/thicker strokes than surrounding text).
+  IMPORTANT: Bold means THICKER LETTER STROKES, not just uppercase or a different font style.
+  - Compare the stroke thickness of "GOVERNMENT WARNING:" to the text that follows it
+  - If ALL the warning text has the same stroke weight, it is NOT bold (return false)
+  - Only return true if "GOVERNMENT WARNING:" has visibly thicker/heavier strokes than the rest of the warning text
+  - Uppercase text is NOT the same as bold - uppercase just means capital letters
+  - true = clearly bold (thicker strokes), false = not bold (same weight as surrounding text), null = uncertain
 - governmentWarningFontSize: Observe the relative font size of the warning compared to other label text:
   - "normal" = similar size to other important label text
   - "small" = noticeably smaller than main label text
@@ -113,12 +153,16 @@ Field definitions:
 - confidence: Your confidence level from 0 to 1 (e.g., 0.9 for clear image, 0.5 for blurry)
 - notes: Any relevant observations about image quality, partial visibility, or extraction uncertainty
 
-CRITICAL for governmentWarning:
-- Extract the COMPLETE warning statement word-for-word
-- Include "GOVERNMENT WARNING:" prefix if present
-- Preserve exact capitalization and punctuation
+CRITICAL for governmentWarning - READ CAREFULLY:
+- Look for text that says "GOVERNMENT WARNING:" followed by "(1) According to the Surgeon General..."
+- Your response MUST begin with "GOVERNMENT WARNING:" - this is MANDATORY
+- DO NOT start with "(1)" - you MUST include "GOVERNMENT WARNING:" before it
+- The correct format is: "GOVERNMENT WARNING: (1) According to the Surgeon General, women should not drink alcoholic beverages during pregnancy because of the risk of birth defects. (2) Consumption of alcoholic beverages impairs your ability to drive a car or operate machinery, and may cause health problems."
+- Copy the ENTIRE warning exactly as it appears, preserving all capitalization
+- If the label shows "GOVERNMENT WARNING:" in bold or different styling, still include it in the text
 - If warning spans multiple lines, combine into single string with spaces
-- Return null only if no warning is visible
+- Return null only if no warning text is visible at all
+- DOUBLE CHECK: Does your governmentWarning value start with "GOVERNMENT WARNING:"? If not, add it!
 
 IMPORTANT for formatting observations (governmentWarningIsBold, governmentWarningFontSize, governmentWarningVisibility):
 - These help verify regulatory compliance for warning visibility
@@ -141,6 +185,41 @@ async function fileToBase64(file: Blob): Promise<string> {
   const base64 = Buffer.from(arrayBuffer).toString('base64');
   const mimeType = file.type || 'image/jpeg';
   return `data:${mimeType};base64,${base64}`;
+}
+
+/**
+ * Post-processes the government warning to ensure it includes the required prefix.
+ * GPT-4 Vision sometimes omits "GOVERNMENT WARNING:" and starts with "(1)".
+ */
+function fixGovernmentWarningPrefix(warning: string | null | undefined): string | null {
+  if (!warning || warning.trim().length === 0) {
+    return null;
+  }
+
+  const trimmed = warning.trim();
+  const upperTrimmed = trimmed.toUpperCase();
+
+  // Check if it already starts with "GOVERNMENT WARNING:"
+  if (upperTrimmed.startsWith('GOVERNMENT WARNING:')) {
+    return trimmed;
+  }
+
+  // Check if it starts with "(1)" which indicates the prefix was missed
+  if (trimmed.startsWith('(1)') || upperTrimmed.startsWith('(1)')) {
+    // Prepend the required prefix
+    return `GOVERNMENT WARNING: ${trimmed}`;
+  }
+
+  // Check for other common patterns that indicate a government warning
+  if (upperTrimmed.includes('SURGEON GENERAL') || 
+      upperTrimmed.includes('ALCOHOLIC BEVERAGES') ||
+      upperTrimmed.includes('BIRTH DEFECTS')) {
+    // This looks like a government warning but missing the prefix
+    return `GOVERNMENT WARNING: ${trimmed}`;
+  }
+
+  // Return as-is if we can't determine
+  return trimmed;
 }
 
 /**
@@ -175,7 +254,13 @@ function parseOpenAIResponse(content: string): ExtractionResponseSchemaType {
     throw new Error(`Schema validation failed: ${formatZodError(result.error)}`);
   }
 
-  return result.data;
+  // Post-process: Fix government warning prefix if needed
+  const data = result.data;
+  if (data.governmentWarning) {
+    data.governmentWarning = fixGovernmentWarningPrefix(data.governmentWarning);
+  }
+
+  return data;
 }
 
 // ============================================================================
@@ -302,6 +387,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const response = await openai.chat.completions.create({
       model: OPENAI_MODEL,
       max_tokens: 1500,
+      temperature: 0, // Set to 0 for consistent, deterministic results
       messages: [
         {
           role: 'user',
@@ -344,6 +430,22 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         502,
         error instanceof Error ? error.message : 'Unknown parsing error'
       );
+    }
+
+    // Log successful extraction in production for monitoring
+    if (process.env.NODE_ENV === 'production') {
+      const logEntry = {
+        timestamp: new Date().toISOString(),
+        level: 'info',
+        service: 'labelverify',
+        endpoint: '/api/extract',
+        status: 'success',
+        model: OPENAI_MODEL,
+        usage: response.usage,
+        confidence: extractedData.confidence,
+        hasWarning: !!extractedData.governmentWarning,
+      };
+      console.log(JSON.stringify(logEntry));
     }
 
     // Return successful response
@@ -405,13 +507,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
     }
 
-    // Generic error
-    console.error('[/api/extract] Unexpected error:', error);
+    // Generic error - log with full stack trace in production
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const errorStack = error instanceof Error ? error.stack : undefined;
     return createErrorResponse(
       'internal_error',
       'An unexpected error occurred',
       500,
-      error instanceof Error ? error.message : 'Unknown error'
+      errorMessage,
+      { stack: errorStack }
     );
   }
 }

@@ -109,9 +109,9 @@ export function SingleVerifyView() {
 
     // Auto-save report after verification completes
     if (result && result.applicationResult) {
-      // Create thumbnails for persistence (300px max, smaller for storage)
+      // Create thumbnails for persistence (500px, 85% quality for better readability)
       const thumbnails = await Promise.all(
-        images.map(img => createThumbnail(img.file, 300))
+        images.map(img => createThumbnail(img.file, 500, 0.85))
       );
       const imageNames = images.map(img => img.name);
 

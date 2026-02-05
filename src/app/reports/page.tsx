@@ -5,7 +5,6 @@ import Link from 'next/link';
 import {
   FileText,
   Trash2,
-  Download,
   ExternalLink,
   RefreshCw,
   AlertTriangle,
@@ -16,7 +15,6 @@ import {
   getReport,
   deleteReport,
   clearAllReports,
-  downloadReportJson,
   formatDate,
   formatDuration,
   type ReportListItem,
@@ -27,8 +25,7 @@ import {
  * 
  * Features:
  * - List all saved reports with summary info
- * - Open report detail view
- * - Download report as JSON
+ * - Open report detail view (where PDF/JSON download is available)
  * - Delete individual reports
  * - Clear all reports
  */
@@ -59,18 +56,6 @@ export default function ReportsPage() {
   useEffect(() => {
     loadReports();
   }, [loadReports]);
-
-  /**
-   * Handle downloading a report as JSON
-   */
-  const handleDownload = useCallback(async (id: string) => {
-    const result = await getReport(id);
-    if (result.success) {
-      downloadReportJson(result.data);
-    } else {
-      setError(`Failed to download report: ${result.error.message}`);
-    }
-  }, []);
 
   /**
    * Handle deleting a report
@@ -280,14 +265,6 @@ export default function ReportsPage() {
                         Open
                       </Button>
                     </Link>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => handleDownload(report.id)}
-                    >
-                      <Download className="h-4 w-4" aria-hidden="true" />
-                      JSON
-                    </Button>
                     <Button
                       variant="ghost"
                       size="sm"

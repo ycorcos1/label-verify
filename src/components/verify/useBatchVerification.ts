@@ -52,6 +52,8 @@ export interface BatchApplicationResult {
   misgroupWarning?: string;
   /** Whether the government warning was not found */
   missingWarning?: boolean;
+  /** Original image files for thumbnail generation */
+  images?: ImageItemWithStatus[];
 }
 
 export interface BatchVerificationSummary {
@@ -330,6 +332,7 @@ export function useBatchVerification(
           processingTimeMs,
           errorMessage: 'Failed to extract data from all images',
           imageCount: images.length,
+          images, // Store images for thumbnail generation later
         };
 
         updateApplicationResult(applicationId, batchResult);
@@ -391,6 +394,7 @@ export function useBatchVerification(
         imageCount: images.length,
         misgroupWarning,
         missingWarning,
+        images, // Store images for thumbnail generation later
       };
 
       updateApplicationResult(applicationId, batchResult);

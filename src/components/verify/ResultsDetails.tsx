@@ -325,7 +325,7 @@ function WarningBlock({ warningResult, imageThumbnailUrl, onImageClick }: Warnin
                         ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300'
                         : 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
                     }`}>
-                      📏 {fontSizeLabel}
+                      {fontSizeLabel}
                     </span>
                   )}
                   {visibilityLabel && (
@@ -336,7 +336,7 @@ function WarningBlock({ warningResult, imageThumbnailUrl, onImageClick }: Warnin
                         ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300'
                         : 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
                     }`}>
-                      👁️ {visibilityLabel}
+                      {visibilityLabel}
                     </span>
                   )}
                 </div>

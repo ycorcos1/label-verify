@@ -242,14 +242,19 @@ export function fileToDataUrl(file: File): Promise<string> {
  * Creates a preview thumbnail of an image
  *
  * @param file - The image file
- * @param maxSize - Maximum width/height for thumbnail (default: 200)
+ * @param maxSize - Maximum width/height for thumbnail (default: 400)
+ * @param quality - JPEG quality 0-1 (default: 0.85)
  * @returns Data URL of the thumbnail
  */
-export async function createThumbnail(file: File, maxSize: number = 200): Promise<string> {
+export async function createThumbnail(
+  file: File, 
+  maxSize: number = 400,
+  quality: number = 0.85
+): Promise<string> {
   const result = await resizeImage(file, {
     maxWidth: maxSize,
     maxHeight: maxSize,
-    quality: 0.7,
+    quality,
     outputFormat: 'image/jpeg',
   });
   return result.dataUrl;

@@ -81,12 +81,13 @@ export interface StatusBadgeProps {
   /** Whether to show only the icon (for compact displays) */
   iconOnly?: boolean;
   /** Size variant */
-  size?: 'sm' | 'md';
+  size?: 'sm' | 'md' | 'lg';
 }
 
 const sizeClasses = {
   sm: 'h-3 w-3',
   md: 'h-3.5 w-3.5',
+  lg: 'h-4 w-4',
 };
 
 /**

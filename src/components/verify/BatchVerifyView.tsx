@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { Upload, Layers, Play, ClipboardList, Users, File, Info, FileText, RefreshCw, AlertTriangle } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle, Button, ErrorBanner, LoadingState, ProcessingProgress, ApplicationErrorCard, detectErrorType } from '@/components/ui';
+import { Card, CardContent, CardHeader, CardTitle, Button, ErrorBanner, LoadingState, ProcessingProgress, ApplicationErrorCard, detectErrorType, ApplicationListCard, type ApplicationInfo } from '@/components/ui';
 import { UploadDropzone } from './UploadDropzone';
 import { ThumbnailList } from './ThumbnailList';
 import { ApplicationGroupCard } from './ApplicationGroupCard';
@@ -78,14 +78,6 @@ export function BatchVerifyView() {
   const [isQuotaError, setIsQuotaError] = useState(false);
   const [pendingReportData, setPendingReportData] = useState<Report | null>(null);
 
-  // Refs to access current groups/ungroupedImages in effects without adding to deps
-  const groupsRef = useRef(groups);
-  const ungroupedImagesRef = useRef(ungroupedImages);
-  useEffect(() => {
-    groupsRef.current = groups;
-    ungroupedImagesRef.current = ungroupedImages;
-  }, [groups, ungroupedImages]);
-
   // Update grouping when images change
   useEffect(() => {
     setImagesAndGroup(images);
@@ -127,6 +119,34 @@ export function BatchVerifyView() {
 
   // Check if there are any groups or ungrouped images to display
   const hasApplications = groups.length > 0 || ungroupedImages.length > 0;
+  const totalApplications = groups.length + ungroupedImages.length;
+
+  // Build applications list for the modal
+  const applicationsForModal: ApplicationInfo[] = useMemo(() => {
+    const apps: ApplicationInfo[] = [];
+    
+    // Add grouped applications
+    for (const group of groups) {
+      apps.push({
+        id: group.id,
+        name: group.name,
+        imageCount: group.images.length,
+        images: group.images,
+      });
+    }
+    
+    // Add ungrouped images as individual applications
+    for (const image of ungroupedImages) {
+      apps.push({
+        id: `ungrouped-${image.id}`,
+        name: image.name.replace(/\.[^/.]+$/, ''), // Remove file extension
+        imageCount: 1,
+        images: [image],
+      });
+    }
+    
+    return apps;
+  }, [groups, ungroupedImages]);
 
   // Check if verification has been run
   const hasResults = applicationResults.size > 0;
@@ -163,32 +183,15 @@ export function BatchVerifyView() {
       if (batchState === 'completed' || batchState === 'partial_error') {
         // Build report applications from results with thumbnails
         const reportApps: ReportApplication[] = [];
-        
-        // Use refs to get current values without triggering re-runs
-        const currentGroups = groupsRef.current;
-        const currentUngroupedImages = ungroupedImagesRef.current;
 
         for (const [appId, appResult] of applicationResults.entries()) {
           if (appResult.result) {
-            // Get images for this application to create thumbnails
-            let appImages: { file: File; name: string }[] = [];
-            
-            // Check if it's a grouped application
-            const group = currentGroups.find((g) => g.id === appId);
-            if (group) {
-              appImages = group.images.map((img) => ({ file: img.file, name: img.name }));
-            } else {
-              // Check if it's an ungrouped application
-              const ungroupedId = appId.replace('ungrouped-', '');
-              const ungroupedImage = currentUngroupedImages.find((img) => img.id === ungroupedId);
-              if (ungroupedImage) {
-                appImages = [{ file: ungroupedImage.file, name: ungroupedImage.name }];
-              }
-            }
+            // Get images directly from the batch result (stored during processing)
+            const appImages = appResult.images || [];
 
-            // Create thumbnails for this application's images
+            // Create thumbnails for this application's images (500px, 85% quality for better readability)
             const thumbnails = await Promise.all(
-              appImages.map(img => createThumbnail(img.file, 300))
+              appImages.map(img => createThumbnail(img.file, 500, 0.85))
             );
             const imageNames = appImages.map(img => img.name);
 
@@ -341,13 +344,19 @@ export function BatchVerifyView() {
   const selectedAppImageUrls = useMemo<string[]>(() => {
     if (!selectedApplicationId) return [];
 
-    // Check if it's a grouped application
+    // First, try to get images from the batch result (most reliable after verification)
+    const batchResult = applicationResults.get(selectedApplicationId);
+    if (batchResult?.images && batchResult.images.length > 0) {
+      return batchResult.images.map((img) => img.previewUrl);
+    }
+
+    // Fallback: Check if it's a grouped application
     const group = groups.find((g) => g.id === selectedApplicationId);
     if (group) {
       return group.images.map((img) => img.previewUrl);
     }
 
-    // Check if it's an ungrouped application
+    // Fallback: Check if it's an ungrouped application
     const ungroupedId = selectedApplicationId.replace('ungrouped-', '');
     const ungroupedImage = ungroupedImages.find((img) => img.id === ungroupedId);
     if (ungroupedImage) {
@@ -355,7 +364,7 @@ export function BatchVerifyView() {
     }
 
     return [];
-  }, [selectedApplicationId, groups, ungroupedImages]);
+  }, [selectedApplicationId, applicationResults, groups, ungroupedImages]);
 
   /**
    * Get image names for the selected application (used as alt text)
@@ -363,13 +372,19 @@ export function BatchVerifyView() {
   const selectedAppImageNames = useMemo<string[]>(() => {
     if (!selectedApplicationId) return [];
 
-    // Check if it's a grouped application
+    // First, try to get images from the batch result (most reliable after verification)
+    const batchResult = applicationResults.get(selectedApplicationId);
+    if (batchResult?.images && batchResult.images.length > 0) {
+      return batchResult.images.map((img) => img.name);
+    }
+
+    // Fallback: Check if it's a grouped application
     const group = groups.find((g) => g.id === selectedApplicationId);
     if (group) {
       return group.images.map((img) => img.name);
     }
 
-    // Check if it's an ungrouped application
+    // Fallback: Check if it's an ungrouped application
     const ungroupedId = selectedApplicationId.replace('ungrouped-', '');
     const ungroupedImage = ungroupedImages.find((img) => img.id === ungroupedId);
     if (ungroupedImage) {
@@ -377,7 +392,7 @@ export function BatchVerifyView() {
     }
 
     return [];
-  }, [selectedApplicationId, groups, ungroupedImages]);
+  }, [selectedApplicationId, applicationResults, groups, ungroupedImages]);
 
   return (
     <div className="space-y-6">
@@ -458,96 +473,61 @@ export function BatchVerifyView() {
         </Card>
       )}
 
-      {/* Application Groups section */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Layers className="h-5 w-5" aria-hidden="true" />
-            Application Groups
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {!hasApplications ? (
-            <div className="flex flex-col items-center justify-center py-8">
-              <Layers className="h-8 w-8 text-zinc-400" aria-hidden="true" />
-              <p className="mt-3 text-sm text-zinc-600 dark:text-zinc-400">
-                No applications detected.
-              </p>
-              <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-500">
-                Upload images to see detected application groups.
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-6">
-              {/* Grouped Applications */}
-              {groups.length > 0 && (
-                <div>
-                  <h4 className="mb-3 flex items-center gap-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                    <Users className="h-4 w-4" aria-hidden="true" />
-                    Grouped Applications ({groups.length})
-                  </h4>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {groups.map((group) => (
-                      <ApplicationGroupCard
-                        key={group.id}
-                        group={group}
-                        onSplit={splitGroup}
-                        onRename={renameGroup}
-                        isProcessing={isProcessing}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
+      {/* Applications section - consolidated view */}
+      {!hasResults && (
+        hasApplications ? (
+          <ApplicationListCard
+            applications={applicationsForModal}
+            applicationValuesMap={applicationValuesMap}
+            onUpdateValues={handleApplicationValuesChange}
+            onRunVerification={handleRunBatchVerification}
+            isProcessing={isProcessing}
+            canRunVerification={canRunVerification}
+          />
+        ) : (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Layers className="h-5 w-5" aria-hidden="true" />
+                Applications
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col items-center justify-center py-8">
+                <Layers className="h-8 w-8 text-zinc-400" aria-hidden="true" />
+                <p className="mt-3 text-sm text-zinc-600 dark:text-zinc-400">
+                  No applications detected.
+                </p>
+                <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-500">
+                  Upload images to see detected applications.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )
+      )}
 
-              {/* Ungrouped Images (each is its own application) */}
-              {ungroupedImages.length > 0 && (
-                <div>
-                  <h4 className="mb-3 flex items-center gap-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                    <File className="h-4 w-4" aria-hidden="true" />
-                    Ungrouped Images ({ungroupedImages.length})
-                  </h4>
-                  <p className="mb-3 text-xs text-zinc-500 dark:text-zinc-400">
-                    Each ungrouped image will be processed as a separate application.
-                    Select multiple images and click &quot;Group Selected&quot; to combine them.
-                  </p>
-                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                    {ungroupedImages.map((image) => (
-                      <UngroupedImageCard
-                        key={image.id}
-                        image={image}
-                        isSelected={selectedIds.has(image.id)}
-                        showCheckbox
-                        onSelectionChange={handleSelectionChange}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Batch Actions */}
+      {/* Batch Actions - retry button and re-run after results */}
       <div className="flex flex-wrap items-center justify-center gap-3">
-        <Button
-          size="lg"
-          onClick={handleRunBatchVerification}
-          disabled={!canRunVerification}
-        >
-          {isProcessing ? (
-            <>
-              <RefreshCw className="h-4 w-4 animate-spin" aria-hidden="true" />
-              Processing...
-            </>
-          ) : (
-            <>
-              <Play className="h-4 w-4" aria-hidden="true" />
-              Run Batch Verification
-            </>
-          )}
-        </Button>
+        {hasResults && (
+          <Button
+            size="lg"
+            onClick={handleRunBatchVerification}
+            disabled={!canRunVerification}
+          >
+            {isProcessing ? (
+              <>
+                <RefreshCw className="h-4 w-4 animate-spin" aria-hidden="true" />
+                Processing...
+              </>
+            ) : (
+              <>
+                <Play className="h-4 w-4" aria-hidden="true" />
+                Run Verification
+              </>
+            )}
+          </Button>
+        )}
         {hasFailedApplications && (
           <Button
             variant="secondary"
@@ -599,12 +579,6 @@ export function BatchVerifyView() {
                 >
                   View in Reports
                 </a>
-                <button
-                  onClick={handleDownloadReportJson}
-                  className="font-medium underline hover:no-underline"
-                >
-                  Download JSON{savedReports.length > 1 ? 's' : ''}
-                </button>
               </div>
             </div>
           )}
@@ -633,7 +607,7 @@ export function BatchVerifyView() {
                 onClick={handleDownloadReportJson}
                 className="ml-auto font-medium underline hover:no-underline"
               >
-                Download JSON instead
+                Download report instead
               </button>
             </div>
           )}
@@ -770,26 +744,6 @@ export function BatchVerifyView() {
                   />
                 </div>
               ) : null}
-              
-              {/* Application Values form for selected application */}
-              {selectedApplicationId && (
-                <div className="mt-4 border-t border-zinc-200 pt-4 dark:border-zinc-700">
-                  <h5 className="mb-3 flex items-center gap-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                    <FileText className="h-4 w-4" aria-hidden="true" />
-                    Application Values
-                    <span className="text-xs font-normal text-zinc-500 dark:text-zinc-400">
-                      (Optional)
-                    </span>
-                  </h5>
-                  <ApplicationValuesForm
-                    values={selectedAppValues}
-                    onChange={handleSelectedAppValuesChange}
-                    suggestions={suggestions}
-                    disabled={isProcessing}
-                    compact
-                  />
-                </div>
-              )}
             </div>
           </div>
           
@@ -800,6 +754,7 @@ export function BatchVerifyView() {
           )}
         </CardContent>
       </Card>
+
     </div>
   );
 }

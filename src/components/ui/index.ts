@@ -22,6 +22,8 @@ export type { StatusType, StatusBadgeProps } from './StatusBadge';
 // Modal components
 export { ImagePreviewModal } from './ImagePreviewModal';
 export type { ImagePreviewModalProps } from './ImagePreviewModal';
+export { ApplicationValuesModal, ApplicationListCard } from './ApplicationValuesModal';
+export type { ApplicationValuesModalProps, ApplicationInfo, ApplicationListCardProps } from './ApplicationValuesModal';
 
 // Error components
 export { ErrorBanner, ErrorBannerContainer, useGlobalErrors } from './ErrorBanner';

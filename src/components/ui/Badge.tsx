@@ -1,7 +1,7 @@
 import { ReactNode } from 'react';
 
 type BadgeVariant = 'default' | 'success' | 'error' | 'warning' | 'info';
-type BadgeSize = 'sm' | 'md';
+type BadgeSize = 'sm' | 'md' | 'lg';
 
 interface BadgeProps {
   children: ReactNode;
@@ -26,6 +26,7 @@ const variantClasses: Record<BadgeVariant, string> = {
 const sizeClasses: Record<BadgeSize, string> = {
   sm: 'gap-1 px-2 py-0.5 text-[10px]',
   md: 'gap-1.5 px-2.5 py-0.5 text-xs',
+  lg: 'gap-2 px-3 py-1 text-sm',
 };
 
 export function Badge({ children, variant = 'default', className = '', size = 'md' }: BadgeProps) {

@@ -315,7 +315,7 @@ function getStatusText(status: FieldStatus | string): string {
 /**
  * Gets style for status badge
  */
-function getStatusStyle(status: string): object {
+function getStatusStyle(status: string) {
   switch (status) {
     case 'pass':
       return styles.statusPass;
@@ -332,7 +332,7 @@ function getStatusStyle(status: string): object {
 /**
  * Gets style for check icon
  */
-function getCheckStyle(status: FieldStatus | string): object {
+function getCheckStyle(status: FieldStatus | string) {
   switch (status) {
     case 'pass':
       return styles.checkPass;
@@ -462,7 +462,7 @@ function FieldTable({ fieldResults }: FieldTableProps) {
             key={index} 
             style={[
               styles.tableRow,
-              index === fieldResults.length - 1 && styles.tableRowLast
+              ...(index === fieldResults.length - 1 ? [styles.tableRowLast] : [])
             ]}
           >
             <Text style={[styles.tableCell, styles.tableCellField]}>{field.fieldName}</Text>

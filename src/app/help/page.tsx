@@ -160,7 +160,7 @@ export default function HelpPage() {
           {/* Step 4: Run Verification */}
           <div>
             <h4 className="font-medium text-zinc-900 dark:text-zinc-100 mb-3 flex items-center gap-2">
-              <span className="inline-flex items-center justify-center h-6 w-6 rounded-full bg-emerald-100 text-emerald-700 text-xs font-semibold dark:bg-emerald-900 dark:text-emerald-300">
+              <span className="inline-flex items-center justify-center h-6 w-6 rounded-full bg-blue-100 text-blue-700 text-xs font-semibold dark:bg-blue-900 dark:text-blue-300">
                 4
               </span>
               Run Verification
@@ -300,18 +300,6 @@ export default function HelpPage() {
               <p>
                 Download any report as a styled PDF document for sharing or archival. The PDF includes 
                 all verification details, field comparisons, and source image thumbnails.
-              </p>
-            </div>
-
-            {/* JSON Export */}
-            <div className="p-4">
-              <h4 className="font-medium text-zinc-900 dark:text-zinc-100 mb-2 flex items-center gap-2">
-                <FileCheck className="h-4 w-4 text-zinc-500" aria-hidden="true" />
-                JSON Export
-              </h4>
-              <p>
-                For technical use cases, you can also download reports as JSON files containing 
-                the complete structured data.
               </p>
             </div>
           </div>
