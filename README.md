@@ -80,11 +80,15 @@ LabelVerify takes a pragmatic approach to label verification:
    - Whitespace normalization
    - Uppercase prefix verification ("GOVERNMENT WARNING:")
    - Visual formatting observations (bold detection, font size, visibility)
+   - Manual bold confirmation when AI detection is uncertain
 
 3. **Flexible Field Comparison**: Supports both strict matching and normalized comparison with:
    - Case/punctuation normalization for text fields
+   - Containment matching (expected value found within extracted value = pass)
    - Unit conversion for numeric fields (ABV/proof, ml/L)
-   - Accent/diacritic normalization for brand names
+   - European decimal format support (e.g., "14,5%" matches "14.5%")
+   - Accent/diacritic normalization for brand names (e.g., "Rosé" matches "Rose")
+   - Editable field values for manual corrections
 
 4. **Progressive Batch Processing**: Uses controlled concurrency to process multiple applications simultaneously while keeping the UI responsive
 
@@ -112,7 +116,9 @@ LabelVerify takes a pragmatic approach to label verification:
 - **AI-Powered OCR**: Extracts brand, class/type, ABV, net contents, producer, country, and government warning
 - **Strict Warning Validation**: Word-for-word verification of government health warning
 - **Visual Formatting Detection**: Observes bold formatting, font size, and visibility of warning text
-- **Field Comparison**: Compares extracted values against user-provided application values
+- **Manual Bold Confirmation**: Pass/Fail buttons when AI bold detection is uncertain
+- **Field Comparison**: Compares extracted values against user-provided application values with flexible matching
+- **Editable Field Values**: Edit extracted or expected values to correct OCR errors or update comparisons
 - **Label-Only Mode**: Validates labels without requiring expected values
 - **Progressive Results**: See results as each application completes
 - **Local Report Storage**: Reports saved in browser for later access
@@ -292,6 +298,8 @@ Best for reviewing one application with one or more label images (front, back, s
 3. **Run Verification**: Click the button to start processing
 4. **Review Results**: See the overall status and field-by-field breakdown
 5. **View Details**: Expand to see extracted values, comparisons, and the government warning status
+6. **Manual Confirmation** (if needed): If bold detection is uncertain, use Pass/Fail buttons to confirm
+7. **Edit Values** (if needed): Click the pencil icon to edit extracted or expected values for correction
 
 ### Batch Mode
 
@@ -308,7 +316,9 @@ Best for processing multiple applications at once during peak season.
 4. **Run Batch Verification**: Process all applications with controlled concurrency
 5. **Filter Results**: View All, Pass, Fail, Needs Review, or Error
 6. **Review Details**: Click any application to see full details
-7. **Retry Failed**: Re-run extraction for any failed applications
+7. **Manual Confirmation** (if needed): Confirm bold formatting when AI is uncertain
+8. **Edit Values** (if needed): Edit extracted or expected values to correct mismatches
+9. **Retry Failed**: Re-run extraction for any failed applications
 
 ---
 
@@ -335,25 +345,24 @@ The government warning validation is the most critical check. It validates:
 - **Font Size**: Reports if warning text appears very small relative to label text
 - **Visibility**: Notes overall prominence (prominent, moderate, subtle)
 
-**Note**: Bold formatting detection requires manual confirmation as OCR cannot guarantee bold detection accuracy.
+**Note**: Bold formatting detection is uncertain—when AI cannot confidently detect bold, manual Pass/Fail buttons appear for user confirmation.
 
 ### Field Comparisons
 
 | Field | Comparison Type | Notes |
 |-------|-----------------|-------|
-| Brand Name | Text (normalized) | Allows case/punctuation/accent differences |
-| Class/Type | Text (normalized) | e.g., "Bourbon Whiskey" = "bourbon whiskey" |
-| ABV/Proof | Numeric | Converts between ABV% and Proof (÷2) |
-| Net Contents | Numeric | Converts between ml/L/oz |
-| Producer | Text (normalized) | Allows formatting variations |
-| Country | Text (normalized) | "Product of USA" matches "Made in USA" |
+| Brand Name | Text (normalized) | Allows case/punctuation/accent differences; containment matching |
+| Class/Type | Text (normalized) | e.g., "White Wine" matches "Dry White Wine" (containment) |
+| ABV/Proof | Numeric | Converts between ABV% and Proof (÷2); supports European decimals (14,5% = 14.5%) |
+| Net Contents | Numeric | Converts between ml/L/oz; supports European decimals |
+| Producer | Text (normalized) | Allows formatting variations; containment matching |
+| Country | Text (normalized) | "Product of USA" matches "Made in USA"; containment matching |
 
 **Status Outcomes:**
-- **Pass**: Values match (with normalization)
-- **Fail**: Values differ significantly
-- **Needs Review**: Close but not exact, or conflicting values from multiple images
-- **Missing**: Value not found on label
-- **Not Provided**: No expected value entered (label-only mode)
+- **Pass**: Values match (with normalization), or expected is contained in extracted, or no expected value provided
+- **Fail**: Government warning wording or uppercase validation fails
+- **Needs Review**: Close but not exact, conflicting values from multiple images, or field comparison mismatch
+- **Not Provided**: No expected value entered (label-only mode) — treated as Pass
 
 ### Label-Only Mode
 
@@ -361,7 +370,7 @@ When application values are not provided:
 
 - Validation still runs for presence/format
 - Government warning is fully validated against the canonical text
-- Field statuses show "Not Provided" for expected values
+- Field statuses show "Not Provided" (treated as Pass)
 - Useful for quick label checks without an application reference
 
 ---
