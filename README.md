@@ -434,17 +434,20 @@ Results appear as each application completes rather than waiting for all:
 |----------|-----------|-----------|
 | **Local-only storage** | No cross-device sync | Simplicity, privacy, no backend required |
 | **No image storage** | Must re-upload to re-verify | Privacy, storage limits, regulatory compliance |
-| **Bold = manual confirm** | Can't guarantee bold detection | OCR technology limitation; safety first |
+| **Bold = AI + manual confirm** | Extra step for uncertain cases | AI bold detection is unreliable; manual confirmation ensures accuracy |
 | **No COLA integration** | Manual data entry for expected values | Scope limitation; integration would require auth/API access |
 | **gpt-4o-mini default** | Slightly lower accuracy | Much faster (~2-3x), significantly cheaper; gpt-4o available as option |
 | **IndexedDB over server DB** | Data on single device only | Zero server cost, no auth complexity, privacy |
 | **Strict warning validation** | May flag acceptable variations | Regulatory compliance requires exactness |
+| **Lenient field comparison** | May pass inexact matches | Containment matching (e.g., "White Wine" in "Dry White Wine") prioritizes usability |
+| **Missing extracted = Pass** | May miss OCR failures | User preference: empty extractions don't block approval |
+| **Editable field values** | User can introduce errors | Allows correction of OCR mistakes without re-verification |
 
 ---
 
 ## Known Limitations
 
-1. **Bold Detection Uncertainty**: OCR cannot reliably detect bold formatting. The app marks this for manual confirmation.
+1. **Bold Detection Uncertainty**: AI cannot reliably detect bold formatting. When uncertain, the app prompts for manual confirmation via Pass/Fail buttons.
 
 2. **Image Quality Dependency**: Poor quality images (blurry, glare, skewed, low resolution) produce lower confidence results.
 
@@ -456,6 +459,10 @@ Results appear as each application completes rather than waiting for all:
 
 6. **Browser Storage Limits**: Very large numbers of reports may approach browser storage quotas (typically 50MB+).
 
+7. **Lenient Containment Matching**: Field comparison passes if expected is contained in extracted (e.g., "Wine" passes against "Wine Cooler"). May be too permissive for strict validation needs.
+
+8. **Candidate Selection**: When multiple conflicting values are found across images, the app shows candidates but doesn't allow selecting the correct one—only manual editing is available.
+
 ---
 
 ## Future Improvements
@@ -463,9 +470,11 @@ Results appear as each application completes rather than waiting for all:
 - **Multi-language Support**: Add warning validation for other countries
 - **COLA Integration**: Direct connection to TTB systems for expected values
 - **Cloud Sync**: Optional cloud storage for cross-device access
-- **Improved Bold Detection**: Custom vision fine-tuning for formatting detection
+- **Better Bold Detection**: Custom vision fine-tuning or alternative approaches to reduce manual confirmation needs
 - **Batch Application Values**: Upload expected values via CSV for batch processing
-- **Audit Trail**: Track who verified what and when
+- **Audit Trail**: Track who verified what and when (including field edits)
 - **Confidence Thresholds**: Configurable thresholds for automatic Pass/Fail
 - **Image Quality Scoring**: Pre-check images and suggest re-upload
 - **Offline Support**: Cache for limited offline functionality
+- **Candidate Selection UI**: Allow users to select from multiple extracted values instead of only editing
+- **Configurable Matching Rules**: Toggle between strict exact matching and lenient containment matching
