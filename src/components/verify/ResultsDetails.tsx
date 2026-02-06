@@ -13,7 +13,6 @@ import type {
   GovernmentWarningFontSize,
   GovernmentWarningVisibility,
   ManualBoldVerification,
-  ManualFieldVerification,
 } from '@/lib/types';
 
 // ============================================================================
@@ -35,8 +34,6 @@ export interface ResultsDetailsProps {
   onImagePreview?: (imageIndex: number) => void;
   /** Callback when user manually verifies bold formatting */
   onManualBoldVerification?: (decision: ManualBoldVerification) => void;
-  /** Callback when user manually verifies a field */
-  onManualFieldVerification?: (fieldIndex: number, decision: ManualFieldVerification) => void;
   /** Callback when user edits a field value */
   onFieldEdit?: (fieldIndex: number, editType: 'extracted' | 'expected', newValue: string) => void;
   /** Whether manual verification is in progress (for loading state) */
@@ -498,7 +495,6 @@ function WarningBlock({
 interface FieldComparisonRowProps {
   field: FieldResult;
   fieldIndex: number;
-  onManualVerification?: (fieldIndex: number, decision: ManualFieldVerification) => void;
   onFieldEdit?: (fieldIndex: number, editType: 'extracted' | 'expected', newValue: string) => void;
   isLoading?: boolean;
 }
@@ -506,7 +502,7 @@ interface FieldComparisonRowProps {
 /**
  * A single field comparison row
  */
-function FieldComparisonRow({ field, fieldIndex, onManualVerification, onFieldEdit, isLoading }: FieldComparisonRowProps) {
+function FieldComparisonRow({ field, fieldIndex, onFieldEdit, isLoading }: FieldComparisonRowProps) {
   const [expanded, setExpanded] = useState(false);
   const [editingField, setEditingField] = useState<'extracted' | 'expected' | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -725,59 +721,6 @@ function FieldComparisonRow({ field, fieldIndex, onManualVerification, onFieldEd
           </div>
         )}
         
-        {/* Manual verification buttons for needs_review fields (that haven't been manually verified yet) */}
-        {field.status === 'needs_review' && !field.manualVerification && onManualVerification && (
-          <div className="mt-3 pt-3 border-t border-amber-200 dark:border-amber-700/50">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs text-amber-600 dark:text-amber-400">
-                Is this field correct?
-              </span>
-              <button
-                onClick={() => onManualVerification(fieldIndex, 'pass')}
-                disabled={isLoading}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-200 dark:hover:bg-emerald-900/60 focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                <CheckCircle2 className="h-3.5 w-3.5" />
-                Yes, Correct
-              </button>
-              <button
-                onClick={() => onManualVerification(fieldIndex, 'fail')}
-                disabled={isLoading}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-900/60 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                <XCircle className="h-3.5 w-3.5" />
-                No, Incorrect
-              </button>
-            </div>
-          </div>
-        )}
-        
-        {/* Show manual verification result if already verified */}
-        {field.manualVerification && (
-          <div className={`mt-2 rounded-md px-3 py-2 ${
-            field.manualVerification === 'pass'
-              ? 'bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800'
-              : 'bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800'
-          }`}>
-            <div className="flex items-center gap-2">
-              {field.manualVerification === 'pass' ? (
-                <>
-                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-                  <span className="text-xs font-medium text-emerald-700 dark:text-emerald-300">
-                    Manually verified as correct
-                  </span>
-                </>
-              ) : (
-                <>
-                  <XCircle className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />
-                  <span className="text-xs font-medium text-red-700 dark:text-red-300">
-                    Manually verified as incorrect
-                  </span>
-                </>
-              )}
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
@@ -860,7 +803,6 @@ export function ResultsDetails({
   showImagePreviewModal = true,
   onImagePreview,
   onManualBoldVerification,
-  onManualFieldVerification,
   onFieldEdit,
   isManualVerificationLoading,
 }: ResultsDetailsProps) {
@@ -948,7 +890,6 @@ export function ResultsDetails({
                   key={index} 
                   field={field} 
                   fieldIndex={index}
-                  onManualVerification={onManualFieldVerification}
                   onFieldEdit={onFieldEdit}
                   isLoading={isManualVerificationLoading}
                 />

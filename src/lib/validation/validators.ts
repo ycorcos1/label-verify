@@ -277,9 +277,9 @@ export function compareTextField(
     return { status: FieldStatus.Pass };
   }
 
-  // No extracted value but expected value exists
+  // No extracted value but expected value exists - still pass (user requested)
   if (extracted === undefined || extracted.trim() === '') {
-    return { status: FieldStatus.NeedsReview, reason: 'Value not found on label' };
+    return { status: FieldStatus.Pass };
   }
 
   const trimmedExtracted = extracted.trim();
@@ -402,10 +402,11 @@ interface ParsedNumericValue {
 }
 
 function parseNumericValue(value: string): ParsedNumericValue | null {
-  const trimmed = value.trim().toLowerCase();
+  // Normalize commas to periods for European-style decimals (e.g., "14,5%" → "14.5%")
+  const normalized = value.trim().toLowerCase().replace(/(\d),(\d)/g, '$1.$2');
   
   // Try to extract number
-  const numberMatch = trimmed.match(/(\d+(?:\.\d+)?)/);
+  const numberMatch = normalized.match(/(\d+(?:\.\d+)?)/);
   if (!numberMatch) {
     return null;
   }
@@ -413,24 +414,24 @@ function parseNumericValue(value: string): ParsedNumericValue | null {
   const numValue = parseFloat(numberMatch[1]);
   
   // Determine unit
-  if (trimmed.includes('%') || trimmed.includes('abv') || trimmed.includes('alc')) {
+  if (normalized.includes('%') || normalized.includes('abv') || normalized.includes('alc') || normalized.includes('vol')) {
     return { value: numValue, unit: 'percent', original: value };
   }
   
-  if (trimmed.includes('proof')) {
+  if (normalized.includes('proof')) {
     return { value: numValue, unit: 'proof', original: value };
   }
   
-  if (trimmed.includes('ml') || trimmed.includes('milliliter')) {
+  if (normalized.includes('ml') || normalized.includes('milliliter')) {
     return { value: numValue, unit: 'ml', original: value };
   }
   
-  if (trimmed.includes('l') && !trimmed.includes('ml')) {
+  if (normalized.includes('l') && !normalized.includes('ml')) {
     // Likely liters
     return { value: numValue, unit: 'l', original: value };
   }
   
-  if (trimmed.includes('oz') || trimmed.includes('ounce')) {
+  if (normalized.includes('oz') || normalized.includes('ounce')) {
     return { value: numValue, unit: 'oz', original: value };
   }
   
@@ -476,9 +477,9 @@ export function compareNumericField(
     return { status: FieldStatus.Pass };
   }
 
-  // No extracted value but expected value exists
+  // No extracted value but expected value exists - still pass (user requested)
   if (extracted === undefined || extracted.trim() === '') {
-    return { status: FieldStatus.NeedsReview, reason: 'Value not found on label' };
+    return { status: FieldStatus.Pass };
   }
 
   const parsedExtracted = parseNumericValue(extracted);
@@ -659,9 +660,15 @@ function validateField(
       const expectedMatchesCandidate = provenance.conflictingCandidates?.some(candidate => {
         const normalizedCandidate = normalizeForComparison(candidate);
         const normalizedExpected = normalizeForComparison(expectedValue);
+        // Also check with accent normalization for Rosé/Rose type matches
+        const noAccentCandidate = removeAccents(removePunctuation(normalizedCandidate));
+        const noAccentExpected = removeAccents(removePunctuation(normalizedExpected));
         return normalizedCandidate === normalizedExpected || 
                normalizedCandidate.includes(normalizedExpected) ||
-               normalizedExpected.includes(normalizedCandidate);
+               normalizedExpected.includes(normalizedCandidate) ||
+               noAccentCandidate === noAccentExpected ||
+               noAccentCandidate.includes(noAccentExpected) ||
+               noAccentExpected.includes(noAccentCandidate);
       });
       
       // Only mark as NeedsReview if expected doesn't match any candidate
@@ -775,19 +782,27 @@ export function computeApplicationResult(
   }
 
   // Compute overall status
+  // Only government warning failures cause overall fail status
+  // Field comparison failures/mismatches only cause needs_review
   let overallStatus: OverallStatus;
-  const hasFailures = failReasons.length > 0 || 
-    fieldResults.some(r => r.status === FieldStatus.Fail) ||
+  
+  // Only government warning can cause a Fail
+  const hasWarningFailure = 
     warningResult.overallStatus === FieldStatus.Fail ||
     warningResult.overallStatus === FieldStatus.Missing;
   
-  const hasReviewNeeded = reviewReasons.length > 0 || 
-    fieldResults.some(r => r.status === FieldStatus.NeedsReview) ||
-    warningResult.overallStatus === FieldStatus.NeedsReview;
+  // Field comparison issues cause needs_review (not fail)
+  const hasFieldIssues = fieldResults.some(r => 
+    r.status === FieldStatus.Fail || 
+    r.status === FieldStatus.NeedsReview ||
+    r.status === FieldStatus.Missing
+  );
+  
+  const hasWarningReview = warningResult.overallStatus === FieldStatus.NeedsReview;
 
-  if (hasFailures) {
+  if (hasWarningFailure) {
     overallStatus = 'fail';
-  } else if (hasReviewNeeded) {
+  } else if (hasFieldIssues || hasWarningReview) {
     overallStatus = 'needs_review';
   } else {
     overallStatus = 'pass';

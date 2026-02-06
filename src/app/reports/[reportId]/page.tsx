@@ -15,7 +15,7 @@ import {
   Info,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, Button, StatusBadge, LoadingState } from '@/components/ui';
-import type { Report, ManualBoldVerification, ManualFieldVerification, FieldStatus, FieldResult, WarningResult, OverallStatus } from '@/lib/types';
+import type { Report, ManualBoldVerification, FieldStatus, FieldResult, WarningResult, OverallStatus } from '@/lib/types';
 import { ResultsDetails } from '@/components/verify/ResultsDetails';
 import {
   getReport,
@@ -422,72 +422,6 @@ export default function ReportDetailPage({ params }: ReportDetailPageProps) {
   }, [report]);
 
   /**
-   * Handle manual field verification
-   * Updates the report with the user's decision for a specific field
-   */
-  const handleManualFieldVerification = useCallback(async (fieldIndex: number, decision: ManualFieldVerification) => {
-    if (!report || !report.applications[0]) return;
-    
-    setSavingManualVerification(true);
-    setError(null);
-    
-    try {
-      // Create updated report with manual verification
-      const updatedReport = { ...report };
-      const app = { ...updatedReport.applications[0] };
-      const result = { ...app.result };
-      const fieldResults = [...result.fieldResults];
-      
-      // Update the specific field
-      const field = { ...fieldResults[fieldIndex] };
-      field.manualVerification = decision;
-      
-      // Update field status based on decision
-      if (decision === 'pass') {
-        field.status = 'pass' as FieldStatus;
-        field.reason = 'Manually verified as correct';
-      } else if (decision === 'fail') {
-        field.status = 'fail' as FieldStatus;
-        field.reason = 'Manually verified as incorrect';
-      }
-      
-      fieldResults[fieldIndex] = field;
-      result.fieldResults = fieldResults;
-      
-      // Recalculate overall status considering ALL fields and the warning
-      const { overallStatus, topReasons } = recalculateOverallStatus(fieldResults, result.warningResult);
-      result.overallStatus = overallStatus;
-      result.topReasons = topReasons;
-      
-      app.result = result;
-      updatedReport.applications[0] = app;
-      
-      // Update summary counts
-      updatedReport.summary = {
-        total: 1,
-        pass: result.overallStatus === 'pass' ? 1 : 0,
-        fail: result.overallStatus === 'fail' ? 1 : 0,
-        needsReview: result.overallStatus === 'needs_review' ? 1 : 0,
-        error: result.overallStatus === 'error' ? 1 : 0,
-      };
-      
-      // Save to IndexedDB
-      const saveResult = await updateReport(updatedReport);
-      
-      if (saveResult.success) {
-        setReport(updatedReport);
-      } else {
-        setError(`Failed to save verification: ${saveResult.error.message}`);
-      }
-    } catch (err) {
-      console.error('Manual field verification failed:', err);
-      setError('Failed to save manual verification. Please try again.');
-    } finally {
-      setSavingManualVerification(false);
-    }
-  }, [report]);
-
-  /**
    * Handle field value edit
    * Re-runs comparison with the new value and updates status
    */
@@ -803,7 +737,6 @@ export default function ReportDetailPage({ params }: ReportDetailPageProps) {
               imageAltTexts={report.applications[0].imageNames || []}
               showImagePreviewModal={report.applications[0].imageThumbnails && report.applications[0].imageThumbnails.length > 0}
               onManualBoldVerification={handleManualBoldVerification}
-              onManualFieldVerification={handleManualFieldVerification}
               onFieldEdit={handleFieldEdit}
               isManualVerificationLoading={savingManualVerification}
             />
